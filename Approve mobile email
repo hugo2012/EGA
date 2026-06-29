@@ -1,0 +1,55 @@
+@78\QImporting@	IS_WIDETAILS	TYPE ZWI_DTLS	WI details for Approval
+@78\QImporting@	IS_TASK	TYPE SWWWIHEAD-WI_RH_TASK	Task ID
+@78\QImporting@	SESAGENTS	TYPE TSWHACTOR	Table with Organizational Objects
+@78\QImporting@	I_APPSTATUS	TYPE ZPPM_WF_APP_STAT_TT OPTIONAL	WF approver Status List
+@78\QImporting@	I_CONTENT_ATT	TYPE ZHR_LEAVE_DOC_CONTENT_TT OPTIONAL	table type for Leave Attachment
+@79\QExporting@	E_RETURN	TYPE EKKO-LOEKZ	Deletion Indicator in Purchasing Document
+@03\QException@	NOAGENTFOUND		No Agent Found
+
+METHOD send_email_ppm.
+    DATA :t_agents TYPE ztt_agents.
+    DATA: ls_agent         TYPE zmm_po_agent,
+          lt_actors        TYPE STANDARD TABLE OF swhactor,
+          ls_actor         TYPE swhactor,
+          lv_objid         TYPE hrs1000-objid,
+          lwa_mob_switch   TYPE zutl_mob_switch,
+          lv_flag_email_on TYPE xfeld.
+    gt_attachment[] = i_content_att[].
+    lv_objid = is_task+2.
+    SELECT SINGLE *
+      INTO lwa_mob_switch
+      FROM zutl_mob_switch
+     WHERE objid EQ lv_objid.
+    IF sy-subrc EQ 0.
+      lv_flag_email_on = 'X'.
+    ELSE.
+      CLEAR: lv_flag_email_on.
+    ENDIF.
+    gt_appstatus = i_appstatus.
+* Mobile approval workflow is switched on
+    IF lv_flag_email_on EQ 'X'.
+      IF sesagents[] IS NOT INITIAL.
+        LOOP AT sesagents INTO ls_actor.
+          CONCATENATE ls_actor-otype
+                      ls_actor-objid
+                 INTO ls_agent-userid.
+          APPEND ls_agent TO t_agents.
+          CLEAR: ls_actor, ls_agent.
+        ENDLOOP.
+      ENDIF.
+      IF t_agents[] IS INITIAL.
+        RAISE noagentfound.
+      ELSE.
+        CALL FUNCTION 'ZWF_SENDMAIL_APPROVAL'
+          EXPORTING
+            widetails = is_widetails
+            ref_task  = is_task
+            i_subj    = ''
+          IMPORTING
+            return    = e_return
+          TABLES
+            approvers = t_agents.
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
