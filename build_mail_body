@@ -1,0 +1,3001 @@
+*&---------------------------------------------------------------------*
+*&  Include           LZWF_MOBILEF01
+*&---------------------------------------------------------------------*
+* Authorization Check not required as it is included in main program   *
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*&      Form  FRAME_MAIL_BODY
+*&---------------------------------------------------------------------*
+*  To frame the body part of the Email to be sent
+*----------------------------------------------------------------------*
+*  No interface parameters need to be passed to this subroutine
+*----------------------------------------------------------------------*
+FORM frame_mail_body.
+
+  DATA: lv_text1 TYPE char255.
+
+  PERFORM get_url.
+
+*-- Font start
+  PERFORM fill_lines1 USING '<FONT face=Arial size=2>'(040).
+*-- FIRST LINE
+  PERFORM fill_lines1 USING '<HTML><BODY>'.
+*-- Word Please make a decision
+  CLEAR: lv_text1.
+  CONCATENATE 'Please Review and Approve/Reject Purchase Order'(016)
+              gv_ebeln
+         INTO lv_text1
+    SEPARATED BY space.
+  PERFORM fill_lines1 USING lv_text1.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+  PERFORM fill_lines1 USING c_new_line.
+*-- PO Details
+  PERFORM fill_lines1 USING 'Details are:'(017).
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+*-- PO Details
+  PERFORM fill_lines1 USING '----------------'.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+  PERFORM fill_lines1 USING c_new_line.
+*-- Vendor Dtls
+  CLEAR: lv_text1.
+  CONCATENATE 'Vendor code / Name                     :'(018)
+              gv_lifnr
+              '--'
+              gv_name1
+         INTO lv_text1
+    SEPARATED BY ''.
+  PERFORM fill_lines1 USING lv_text1.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+*-- Buyer Dtls
+  CLEAR: lv_text1.
+  CONCATENATE 'Buyer code / Name                      :'(019)
+              gv_ekgrp
+              '--'
+              gv_eknam
+         INTO lv_text1
+    SEPARATED BY ''.
+  PERFORM fill_lines1 USING lv_text1.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+*-- PO Currency
+  CLEAR: lv_text1.
+  CONCATENATE 'PO Currency                            :'(020)
+              gv_waers
+         INTO lv_text1
+    SEPARATED BY ''.
+  PERFORM fill_lines1 USING lv_text1.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+*-- PO Amount
+  CALL FUNCTION 'BAPI_CURRENCY_CONV_TO_EXTERNAL'
+    EXPORTING
+      currency        = gv_waers
+      amount_internal = gv_poamt
+    IMPORTING
+      amount_external = gv_amtextr.
+
+  WRITE gv_amtextr TO gv_poamtc DECIMALS 2.
+  CONDENSE gv_poamtc NO-GAPS.
+
+  CLEAR: lv_text1.
+  CONCATENATE 'PO Amount                              :'(021)
+              gv_poamtc
+         INTO lv_text1
+    SEPARATED BY '                              '.
+  PERFORM fill_lines1 USING lv_text1.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+*-- PO Amount Local Currency
+  CLEAR: gv_amtextr.
+  CALL FUNCTION 'BAPI_CURRENCY_CONV_TO_EXTERNAL'
+    EXPORTING
+      currency        = gv_waers
+      amount_internal = gv_poamtlocl
+    IMPORTING
+      amount_external = gv_amtextr.
+
+  WRITE gv_amtextr TO gv_poamtloclc  DECIMALS 2.
+  CONDENSE gv_poamtloclc NO-GAPS.
+  CLEAR: lv_text1.
+  CONCATENATE 'PO Amount (In Local Currency)          :'(022)
+              gv_poamtloclc
+         INTO lv_text1
+    SEPARATED BY '          '.
+  PERFORM fill_lines1 USING lv_text1.
+
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+  PERFORM fill_lines1 USING c_new_line.
+  PERFORM fill_lines1 USING c_new_line.
+**-- New line
+  PERFORM fill_lines1 USING c_new_line.
+
+  PERFORM prepare_buttons USING lv_text1 ' '.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+*-- SEVENTH line
+  PERFORM fill_lines1 USING '</BODY></HTML>'.
+
+*-- Subject of the Mail
+  CONCATENATE 'DEMO: Please'(023)
+              gv_aprvtext
+              'Purchase Order :'(024)
+              gv_ebeln        " 'Test Approval with Buttons for action in SAP'(008)
+              gv_mailsubj
+         INTO gv_mailsubj
+    SEPARATED BY ''.
+
+ENDFORM.                    " FRAME_MAIL_BODY
+
+
+*&---------------------------------------------------------------------*
+*& Form Name     : Send_mail                                           *
+*&---------------------------------------------------------------------*
+*& Description   : To set the recipients and send the mail             *
+*&---------------------------------------------------------------------*
+*& Parameters    : None                                                *
+*&---------------------------------------------------------------------*
+FORM send_mail USING pv_ref_task.
+
+*-- Local data declaration for sending mail
+  DATA: l_send_request  TYPE REF TO cl_bcs,
+        l_document      TYPE REF TO cl_document_bcs,
+        l_sender        TYPE REF TO cl_sapuser_bcs,
+        l_sub           TYPE char50,
+        l_recipient     TYPE REF TO if_recipient_bcs,
+        lit_contents    TYPE STANDARD TABLE OF soli,
+        l_doc_len       TYPE so_obj_len,
+        l_cnt           TYPE sy-tabix,
+        l_result        TYPE sy-binpt,
+        l_subj          TYPE string,
+        l_bcs_exception TYPE REF TO cx_bcs.
+
+  DATA: lv_mail_address TYPE ad_smtpadr.
+  DATA: lv_address      TYPE REF TO cl_cam_address_bcs.
+  DATA: lv_addname      TYPE ad_smtpadr.
+  TRY.
+*-- Create persistent send request
+      l_send_request = cl_bcs=>create_persistent( ).
+      lit_contents[] = it_contents[].
+
+*-- Get the length of the Document
+      CLEAR: wa_contents.
+      DESCRIBE TABLE lit_contents LINES l_cnt.
+      READ TABLE lit_contents INTO wa_contents INDEX l_cnt.
+      l_doc_len = ( l_cnt - 1 ) * 255 + strlen( wa_contents ).
+*-- Subject of the mail
+      l_sub = gv_mailsubj.
+*<<< Modified by C90000111
+      IF sy-sysid NE 'DSP'.
+        CONCATENATE '**Test Message**:'
+                    gv_mailsubj
+               INTO l_subj.
+      ELSE.
+        l_subj = gv_mailsubj.
+      ENDIF.
+      l_sub = l_subj.
+*>>> Modification end
+*-- Create Document
+      l_document = cl_document_bcs=>create_document(
+                   i_type       = c_htm
+                   i_text       = lit_contents
+                   i_length     = l_doc_len
+                   i_subject    = l_sub
+                   i_language   = sy-langu
+                   i_importance = '1' ).
+
+*-- Subject of the mail
+*      l_subj = gv_mailsubj.
+      go_document = l_document.
+
+      TRY.
+*-- Set the Message Subject
+          CALL METHOD l_send_request->set_message_subject
+            EXPORTING
+              ip_subject = l_subj.
+        CATCH cx_sy_dyn_call_illegal_method.
+      ENDTRY.
+
+* Start of change DSDK967826:CRQ118763
+*-- Populate attachment
+      PERFORM sub_pop_attachment USING pv_ref_task
+                                       l_document.
+* End of change DSDK967826:CRQ118763
+
+*-- Add document to send request
+      CALL METHOD l_send_request->set_document( l_document ).
+
+*-- Do send delivery info for successful mails
+      CALL METHOD l_send_request->set_status_attributes
+        EXPORTING
+          i_requested_status = 'E'
+          i_status_mail      = 'A'.
+*<<<<  Modification related to CRQ11740
+*      Fetch Domain mail
+*     Approval mail will have sender name as per below matrix so approval can
+*     easily categorize his/her pending items
+      SELECT SINGLE unx_config FROM sopr INTO lv_mail_address.
+      IF sy-subrc EQ 0.
+        CONCATENATE 'WF-BATCH' lv_mail_address INTO lv_mail_address SEPARATED BY '@'.
+        SELECT SINGLE sname FROM zutl_mob_switch INTO lv_addname
+             WHERE objid EQ pv_ref_task+2(8).
+        IF lv_addname IS INITIAL.
+          lv_addname = 'Workflow System'(025).
+        ENDIF.
+*        CASE pv_ref_task.
+*
+*          WHEN 'TS90000431'. "Decision mail For Hedging Approval WF
+*            lv_addname = 'Hedging Approval'.
+*          WHEN 'TS90000432'. "Decision Mail for Petty Cash
+*            lv_addname = 'PettyCash Approval'.
+*          WHEN 'TS90000434' OR 'TS90000436'. "Decision mail for PO approval
+*            lv_addname = 'PO Approval'.
+*          WHEN 'TS90000435'. "Decision Mail for AR
+*            lv_addname = 'AR Approval'.
+*          WHEN 'TS90000437'. "Service Entry Sheet Decision by Mobile
+*            lv_addname = 'SES Approval'.
+*          WHEN 'TS90000438'. "Decision mail for PR approval
+*            lv_addname = 'PR Approval'.
+*          WHEN 'TS90000443'. "Decision via Email reg. absence approval
+*            lv_addname = 'Leave Approval'.
+*          WHEN OTHERS.
+*            lv_addname = 'Workflow System'.
+*        ENDCASE.
+        TRY.
+            CALL METHOD cl_cam_address_bcs=>create_internet_address
+              EXPORTING
+                i_address_string = lv_mail_address
+                i_address_name   = lv_addname
+*               i_incl_sapuser   =
+              RECEIVING
+                result           = lv_address.
+          CATCH cx_address_bcs .
+        ENDTRY.
+      ENDIF.
+*>>>  Modification end CRQ11740
+*-- Set sender
+*      l_sender = cl_sapuser_bcs=>create( sy-uname ).
+      CALL METHOD l_send_request->set_sender
+        EXPORTING
+          i_sender = lv_address. "l_sender.
+
+*-- Add the recipients to the Send mail
+      CHECK NOT wa_poagents-emailid IS INITIAL.
+      l_recipient = cl_cam_address_bcs=>create_internet_address(
+                                                    wa_poagents-emailid ).
+      CALL METHOD l_send_request->add_recipient
+        EXPORTING
+          i_recipient = l_recipient
+          i_express   = 'X'.
+
+*-- Send Email
+      CALL METHOD l_send_request->send(
+        EXPORTING
+          i_with_error_screen = 'X'
+        RECEIVING
+          result              = l_result ).
+
+      IF l_result = 'X'.
+        CLEAR: gv_success.
+      ELSE.
+        gv_success = 'X'.
+      ENDIF.
+
+    CATCH cx_bcs INTO l_bcs_exception.
+  ENDTRY.
+  COMMIT WORK AND WAIT.                        "Commit Work
+
+ENDFORM.                    " send_mail
+
+*&---------------------------------------------------------------------*
+*&      Form  FILL_LINES1
+*&---------------------------------------------------------------------*
+*  Build the internal table for Mail Content
+*----------------------------------------------------------------------*
+*      -->P_input : Char255 word
+*----------------------------------------------------------------------*
+FORM fill_lines1 USING p_input TYPE char255.
+
+  CLEAR wa_contents.
+  wa_contents-line = p_input.
+  APPEND wa_contents TO it_contents.
+
+ENDFORM.                    " FILL_LINES1
+
+FORM fill_lines6 USING p_input TYPE char255.
+
+  CLEAR wa_contents.
+  wa_contents-line = p_input.
+  APPEND wa_contents TO it_html_contents.
+
+ENDFORM.                    " FILL_LINES1
+*&---------------------------------------------------------------------*
+*&      Form  FILL_LINES2
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_TEXT1  First  Line
+*      -->P_TEXT2  Second Line
+*      -->P_TEXT3  Third  Line
+*      -->P_TEXT4  Fourth Line
+*      -->P_NOS    No of Spaces
+*----------------------------------------------------------------------*
+FORM fill_lines2 USING p_text1 TYPE char255
+                       p_text2 TYPE char255
+                       p_text3 TYPE char255
+                       p_text4 TYPE char255
+                       p_nos   TYPE char2.
+
+  DATA: lv_str TYPE string.
+
+  CLEAR wa_contents.
+  IF p_nos IS INITIAL.
+    CONCATENATE p_text1 p_text2
+                p_text3 p_text4
+           INTO wa_contents-line
+      SEPARATED BY ''.
+  ELSE.
+    DO p_nos TIMES.
+      CONCATENATE lv_str c_space
+             INTO lv_str
+        SEPARATED BY ''.
+    ENDDO.
+
+    CONCATENATE p_text1 p_text2
+                p_text3 p_text4
+                lv_str
+           INTO wa_contents-line
+      SEPARATED BY ''.
+  ENDIF.
+  APPEND wa_contents TO it_contents.
+
+ENDFORM.                    " FILL_LINES2
+
+
+*&---------------------------------------------------------------------*
+*&      Form  FILL_LINES3
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_TEXT1  First  Line
+*      -->P_TEXT2  Second Line
+*      -->P_TEXT3  Third  Line
+*      -->P_TEXT4  Fourth Line
+*      -->P_NOS    No of Spaces
+*----------------------------------------------------------------------*
+FORM fill_lines3 USING p_text1 TYPE char255
+                       p_text2 TYPE char255
+                       p_text3 TYPE char255
+                       p_text4 TYPE char255
+                       p_text5 TYPE char255.
+
+  DATA: lv_str TYPE string.
+
+  CLEAR wa_contents.
+  CONCATENATE p_text1 p_text2
+              p_text3 p_text4
+              p_text5 lv_str
+         INTO wa_contents-line
+    SEPARATED BY ''.
+  APPEND wa_contents TO it_contents.
+
+ENDFORM.                    " FILL_LINES3
+
+*&---------------------------------------------------------------------*
+*&      Form  FILL_LINES3
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_TEXT1  First  Line
+*      -->P_TEXT2  Second Line
+*      -->P_TEXT3  Third  Line
+*      -->P_TEXT4  Fourth Line
+*      -->P_NOS    No of Spaces
+*----------------------------------------------------------------------*
+FORM fill_lines4 USING p_text1 TYPE char255
+                       p_text2 TYPE char255
+                       p_text3 TYPE char255
+                       p_text4 TYPE swr_decikey
+                       p_text5 TYPE char255
+                       p_text6 TYPE char255
+                       p_text7 TYPE xfeld
+                       p_text8 TYPE char255
+                       p_text9 TYPE char255.
+
+  DATA: lv_str TYPE string.
+
+  CLEAR wa_contents.
+  CONCATENATE p_text1 p_text2 p_text3 p_text4 p_text5
+              p_text6 p_text7 p_text8 p_text9
+              lv_str
+         INTO wa_contents-line.
+  APPEND wa_contents TO it_contents.
+
+ENDFORM.                    " FILL_LINES4
+
+
+*&---------------------------------------------------------------------*
+*&      Form  FILL_LINES5
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_TEXT1  First  Line
+*      -->P_TEXT2  Second Line
+*      -->P_TEXT3  Third  Line
+*      -->P_TEXT4  Fourth Line
+*      -->P_NOS    No of Spaces
+*----------------------------------------------------------------------*
+FORM fill_lines5 USING p_text1 TYPE char255
+                       p_text2 TYPE xubname
+                       p_text3 TYPE char255
+                       p_text4 TYPE char255
+                       p_text5 TYPE sww_wiid
+                       p_text6 TYPE char255
+                       p_text7 TYPE char255
+                       p_text8 TYPE num10
+                       p_text9 TYPE char255
+                       p_text10 TYPE char255.
+
+  DATA: lv_str TYPE string.
+
+  CLEAR wa_contents.
+  CONCATENATE p_text1 p_text2 p_text3 p_text4 p_text5
+              p_text6 p_text7 p_text8 p_text9 p_text10
+              lv_str
+         INTO wa_contents-line.
+  APPEND wa_contents TO it_contents.
+
+ENDFORM.                    " FILL_LINES5
+
+*&---------------------------------------------------------------------*
+*&      Form  CLEAR_POMAIL_VARIABLES
+*&---------------------------------------------------------------------*
+*  Clear the work variables
+*----------------------------------------------------------------------*
+*  No interface parameters to be passed to this subroutine
+*----------------------------------------------------------------------*
+FORM clear_pomail_variables.
+
+  CLEAR: wa_contents, gv_mailsubj, go_document, wa_wi_dtls, wa_poagents,
+         gv_ebeln, gv_auth, gv_wiid, gv_seccode, gv_poamt, gv_waers,
+         gv_poamtlocl, gv_ekgrp, gv_eknam, gv_lifnr, gv_name1, gv_flag,
+         gv_aprvtext, gv_success, gv_top_wi_id, gv_arflag, wa_header,
+         gv_header, gv_footer, gv_wiid, gv_error, wa_error.
+  REFRESH: it_mailhex, it_contents, it_poagents, it_hn1, it_hn2,
+           it_in1, it_in2, it_header, it_error, it_buttons.
+
+ENDFORM.                    " CLEAR_POMAIL_VARIABLES
+
+
+*&---------------------------------------------------------------------*
+*&      Form  AUTHORIZE_WITH_SECCODE
+*&---------------------------------------------------------------------*
+* Check the SECURITY CODE being passed in by the web service and check
+* whether it is the same number that has been passed by the workflow
+* when an email for this Object approval has been sent.
+*----------------------------------------------------------------------*
+* No interface parameters need to be passed to this subroutine
+*----------------------------------------------------------------------*
+FORM authorize_with_seccode USING p_status.
+
+  DATA: it_wiid      TYPE swrtwiid,
+        wa_wiid      TYPE sww_wiid,
+        lv_subrc     TYPE sy-subrc,
+        lv_timestamp TYPE timestampl.
+
+
+  IF gv_seccode IS INITIAL.
+    gv_retcode = '99'.
+  ELSE.
+*   Get the workitem ID for the decision work item
+    PERFORM identify_agents_for_wi USING p_status.
+  ENDIF.
+
+ENDFORM.                    " AUTHORIZE_WITH_SECCODE
+
+
+*&---------------------------------------------------------------------*
+*&      Form  GENERATE_AND_STORE_SECCODE4WI
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM generate_and_store_seccode4wi.
+
+* Call the Number range object to pick next number
+  CALL FUNCTION 'CVV8_GET_NEXT_NUMBER'
+    EXPORTING
+      i_numrange_object       = 'ZRANDOMNO'
+    IMPORTING
+      e_number                = gv_seccode
+    EXCEPTIONS
+      interval_not_found      = 1
+      number_range_not_intern = 2
+      object_not_found        = 3
+      error_in_number_range   = 4
+      OTHERS                  = 5.
+  IF sy-subrc <> 0.
+*   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ELSE.
+*  Store the Combination of this SEC CODE and Workitem into DB table
+    wa_zswwwiauth-mandt     = sy-mandt.
+    wa_zswwwiauth-wi_id     = wa_wi_dtls-wi_id.  "gv_top_wi_id.
+    wa_zswwwiauth-sec_code  = gv_seccode.
+    wa_zswwwiauth-userid    = wa_poagents-userid.
+    wa_zswwwiauth-erdat     = sy-datum.
+    wa_zswwwiauth-uzeit     = sy-uzeit.
+    INSERT INTO zswwwiauth VALUES wa_zswwwiauth.
+    IF sy-subrc EQ 0.
+      gv_flag = 'X'.
+    ENDIF.
+  ENDIF.
+
+
+ENDFORM.                    " GENERATE_AND_STORE_SECCODE4WI
+
+
+*&---------------------------------------------------------------------*
+*&      Form  VALIDATE_APPROVER_WIID
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM validate_approver_wiid USING p_status.
+
+  SORT it_agents BY user.
+  SORT it_capprover BY wi_aagent.
+  READ TABLE it_agents INTO wa_agents
+                       WITH KEY user = gv_approver
+                            BINARY SEARCH.
+  IF sy-subrc EQ 0.
+    CLEAR: gv_retcode.
+  ELSE.
+*<<< Modification done by C90000111
+*    Check whether approver is aleardy actioned it. it valid for
+*    worklow which having two level flow in same instance
+*    For example: AR Workflow ( WS900000048)
+*                 Leave Workflow (WS90000003)
+    READ TABLE it_capprover INTO wa_capprover
+                            WITH KEY wi_aagent = gv_approver
+                                     BINARY SEARCH.
+    IF sy-subrc EQ 0.
+      gv_retcode = '97'.
+      wa_message_lines-msg_type = 'E'.
+      wa_message_lines-line = 'Work Item is not in Actionable State'(026).
+    ELSE.
+*>>> Modification related C90000111 CRQ11740.
+*   If approver is having substitute so both would receive approval mail
+*   and if any one open workitem and its would be disappeared from another
+*   user inbox and this user want to approve it then he should get meaning
+*   full message
+*   The work item is not in Approver's Inbox - Approver not Geinue
+      IF p_status EQ c_inprogress OR
+         p_status EQ c_reserved   OR
+         p_status EQ c_waiting.
+        READ TABLE it_agents INTO wa_agents INDEX 1.
+        IF sy-subrc EQ 0.
+          gv_retcode = '97'.
+          wa_message_lines-msg_type = 'E'.
+          CONCATENATE 'The work item is already being processed by'(027)
+                       wa_agents-user
+                       '. Kindly wait for'(028)
+                       wa_agents-user
+                       'to finish processing the item or, if required,'(029)
+                       'contact IT to redirect the work item'(030) INTO wa_message_lines-line.
+*      wa_message_lines-line = 'Invalid Approver'.
+        ELSE.
+          gv_retcode = '97'.
+          wa_message_lines-msg_type = 'E'.
+          wa_message_lines-line = 'Invalid Approver'(031).
+        ENDIF.
+*>>>  End of modification CRQ11740
+      ELSE.
+        gv_retcode = '97'.
+        wa_message_lines-msg_type = 'E'.
+        wa_message_lines-line = 'Invalid Approver'(031).
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.                    " VALIDATE_APPROVER_WIID
+
+
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_LOCKS_ON_PO
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM check_locks_on_po.
+
+* Check locks on PO
+  CALL FUNCTION 'ENQUEUE_EMEKKOE'
+    EXPORTING
+      ebeln          = gv_ebeln
+    EXCEPTIONS
+      foreign_lock   = 1
+      system_failure = 2
+      OTHERS         = 3.
+  IF sy-subrc <> 0.
+    gv_retcode = '96'.
+    wa_message_lines-msg_type = 'E'.
+    CONCATENATE 'PO is currently being processed by'(032)
+                syst-msgv1
+           INTO wa_message_lines-line
+      SEPARATED BY ''.
+  ELSE.
+    CALL FUNCTION 'DEQUEUE_EMEKKOE'
+      EXPORTING
+        ebeln     = gv_ebeln
+        _synchron = 'X'.
+  ENDIF.
+
+
+ENDFORM.                    " CHECK_LOCKS_ON_PO
+
+
+*&---------------------------------------------------------------------*
+*&      Form  WRITE_TO_CONTAINER
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM write_to_container.
+
+  DATA: lwa_swwwihead TYPE swwwihead,
+        lv_so_obj_des TYPE so_obj_des.
+
+  wa_swr_cont-element = 'RFCAPPROVER'.
+  CONCATENATE 'US'
+              gv_approver
+         INTO wa_swr_cont-value.
+  APPEND wa_swr_cont TO it_swr_cont.
+
+  wa_swr_cont-element = 'RFC'.
+  wa_swr_cont-value   = 'X'.
+  APPEND wa_swr_cont TO it_swr_cont.
+
+  CALL FUNCTION 'SAP_WAPI_WRITE_CONTAINER'
+    EXPORTING
+      workitem_id      = gv_top_wi_id
+      actual_agent     = gv_approver
+      do_commit        = 'X'
+    IMPORTING
+      return_code      = gv_retcode1
+    TABLES
+      simple_container = it_swr_cont.
+
+* If reasons for rejection are there and work item has been rejected
+* then create an SOFM object with the notes given in
+  IF gv_rejreason IS NOT INITIAL.
+*   From the string convert it into internal table for SOFM Object creation
+    CALL FUNCTION 'RKD_WORD_WRAP'
+      EXPORTING
+        textline            = gv_rejreason
+        outputlen           = c_255
+      TABLES
+        out_lines           = it_note_text
+      EXCEPTIONS
+        outputlen_too_large = 1
+        OTHERS              = 2.
+    IF sy-subrc <> 0.
+*     MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    ENDIF.
+
+*   Get the subject line for the object attachment
+    SELECT SINGLE *
+      INTO lwa_swwwihead
+      FROM swwwihead
+     WHERE wi_id EQ gv_top_wi_id.
+    IF sy-subrc EQ 0.
+      lv_so_obj_des = lwa_swwwihead-wi_text+0(50).
+    ELSE.
+      lv_so_obj_des = 'Rejection Reasons'(033).
+    ENDIF.
+* Create object
+    CALL FUNCTION 'SWL_SOFM_CREATE_WITH_TABLE'
+      EXPORTING
+        note_title          = lv_so_obj_des
+        document_type       = 'RAW'
+      IMPORTING
+        sofm_key            = gv_sofm_key
+      TABLES
+        note_text           = it_note_text
+      EXCEPTIONS
+        error_sofm_creation = 1
+        OTHERS              = 2.
+    IF sy-subrc <> 0.
+      gv_retcode = '94'.
+      wa_message_lines-msg_type = 'E'.
+      wa_message_lines-line
+          = 'Error creating object for Rejection Reasons'(034).
+    ELSE.
+      wa_note = gv_sofm_key.
+*   Attach the object created above to work item
+      CALL FUNCTION 'SWL_WI_NOTE_CREATE'
+        EXPORTING
+          wi_id                         = wa_swwwihead-wi_id
+          note                          = wa_note
+          do_commit                     = 'X'
+        CHANGING
+          wi_header                     = wa_wiheader
+        EXCEPTIONS
+          error_setting_note_exist_flag = 1
+          error_note_creation           = 2
+          error_container_update        = 3
+          container_does_not_exist      = 4
+          error_in_wi_enqueue           = 5
+          illegal_wi_state              = 6
+          wi_header_read_failed         = 7
+          object_creation_failed        = 8
+          method_calling_failed         = 9
+          wi_buffer_refresh_failed      = 10
+          user_has_cancelled            = 11
+          OTHERS                        = 12.
+      IF sy-subrc <> 0.
+        gv_retcode = '94'.
+        wa_message_lines-msg_type = 'E'.
+        wa_message_lines-line
+            = 'Error while attaching the Rejection Reasons to Object'(035).
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+
+ENDFORM.                    " WRITE_TO_CONTAINER
+
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_URL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM get_url .
+
+  REFRESH it_query.
+  wa_query-name = '_OBJECT_ID'.
+  wa_query-value = 'ZAPPROVE'.   "node name in OAER where your picture was placed
+  APPEND wa_query TO it_query.
+
+
+  CALL FUNCTION 'WWW_GET_MIME_OBJECT'
+    TABLES
+      query_string        = it_query
+      html                = it_html
+      mime                = pick_data
+    CHANGING
+      return_code         = return_code
+      content_type        = content_type
+      content_length      = content_length
+    EXCEPTIONS
+      object_not_found    = 1
+      parameter_not_found = 2
+      OTHERS              = 3.
+  IF sy-subrc = 0.
+    pic_size = content_length.
+  ENDIF.
+
+  CLEAR url.
+  CALL FUNCTION 'DP_CREATE_URL'
+    EXPORTING
+      type     = 'image'
+      subtype  = 'X-UNKNOWN'
+      size     = pic_size
+      lifetime = 'T'
+    TABLES
+      data     = pick_data
+    CHANGING
+      url      = url
+    EXCEPTIONS
+      OTHERS   = 1.
+
+ENDFORM.                    " GET_URL
+
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_TASK_TEXTS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_WIDETAILS_WI_ID  text
+*      -->P_REF_TASK  text
+*      -->P_IT_TASK_TEXTS  text
+*----------------------------------------------------------------------*
+FORM get_task_texts  USING    pv_wi_id
+                              pv_ref_task
+                              pt_texts
+                              pt_lines.
+
+  DATA: lt_stream   TYPE swrttxtlin,
+        ls_header   TYPE swwwihead,
+        lt_lines    TYPE tline_tab,
+        lv_type     TYPE sww_witype,
+        lv_task_typ TYPE syinput.
+
+  DATA: l_container TYPE REF TO if_swf_cnt_container,
+        lv_wiid     TYPE swwwihead-wi_id.
+  DATA: lt_container TYPE STANDARD TABLE OF swcont.
+  DATA: lv_requestno TYPE belnr_d,
+        lv_value     TYPE text132.
+
+
+  CLEAR: pt_texts.
+  CALL FUNCTION 'SWD_GET_TASK_ATTRIBUTES'
+    EXPORTING
+      im_task              = pv_ref_task
+    IMPORTING
+      ex_wi_type           = lv_task_typ
+    EXCEPTIONS
+      no_active_plvar      = 1
+      no_org_object        = 2
+      org_object_not_found = 3
+      no_task_type         = 4
+      OTHERS               = 5.
+  IF sy-subrc <> 0.
+*   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+  lv_type = lv_task_typ.
+  lv_wiid = pv_wi_id.
+* Fetch Container
+  CALL FUNCTION 'SWW_WI_CONTAINER_READ'
+    EXPORTING
+      wi_id                    = lv_wiid
+    IMPORTING
+      wi_container_handle      = l_container
+    TABLES
+      wi_container             = lt_container
+    CHANGING
+      wi_header                = ls_header
+    EXCEPTIONS
+      container_does_not_exist = 0  "01
+      OTHERS                   = 0.
+*  IF pv_ref_task EQ 'TS90000877'.
+*    READ TABLE lt_container INTO DATA(lwa_container) WITH KEY element = 'ABSENCETYPE'.
+*    IF sy-subrc EQ 0.
+*      gv_leave_type = lwa_container-value.
+*    ENDIF.
+*  ENDIF.
+  " CRQ122651:E0008 changes begin
+* set length size
+  IF pv_ref_task EQ 'TS90001126'.
+    DATA l_linesize TYPE thead-tdlinesize VALUE '132'.
+    CALL FUNCTION 'SWU_GET_TASK_TEXTLINES'
+      EXPORTING
+        task              = pv_ref_task
+        usage             = lv_type
+        container_handle  = l_container
+        context           = ''
+        linewidth         = l_linesize
+      TABLES
+        ascii_text_lines  = lt_lines
+        html_text_lines   = it_htmltab
+        stream_text_lines = lt_stream
+      EXCEPTIONS
+        wrong_usage       = 1
+        text_not_found    = 2
+        text_system_error = 3
+        OTHERS            = 4.
+    IF sy-subrc <> 0.
+*  MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    ENDIF.
+  ELSE."CRQ122651:E0008 end
+    CALL FUNCTION 'SWU_GET_TASK_TEXTLINES'
+      EXPORTING
+        task              = pv_ref_task
+        usage             = lv_type
+        container_handle  = l_container
+        context           = ''
+      TABLES
+        ascii_text_lines  = lt_lines
+        html_text_lines   = it_htmltab
+        stream_text_lines = lt_stream
+      EXCEPTIONS
+        wrong_usage       = 1
+        text_not_found    = 2
+        text_system_error = 3
+        OTHERS            = 4.
+    IF sy-subrc <> 0.
+*  MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    ENDIF.
+  ENDIF.
+
+  gv_mailsubj = ls_header-wi_text.
+  pt_texts = lt_stream.
+  pt_lines = lt_lines.
+  gv_top_wi_id = ls_header-top_wi_id.
+
+  IF pv_ref_task EQ 'TS90000432'.
+    REFRESH: it_petty_details.
+*  "Fetch Header Petty Cash No
+    READ TABLE lt_container INTO DATA(lwa_container) WITH KEY element = 'PETTYNO'.
+    IF sy-subrc EQ 0.
+      CONDENSE lwa_container-value.
+      lv_requestno = lwa_container-value.
+      lv_requestno = |{ lv_requestno ALPHA = IN }|.
+      SELECT pbuzei
+             wrbtr
+             waers_itm
+             sgtxt
+             amount_hcurr
+             waers
+        FROM zfi_petty_cash
+        INTO TABLE it_petty_details
+       WHERE pbelnr  EQ lv_requestno
+         AND doctype EQ 'AS'.
+      DATA(lv_dtl) = zcl_petty_cash_wf=>get_addetails(  lv_requestno ).
+      IF lv_dtl IS NOT INITIAL.
+        REFRESH: it_petty_mailbody.
+        gv_adcurrency = lv_dtl-ad_waers.
+*        IF lv_dtl-ad_amount IS NOT INITIAL.
+*          CLEAR: lv_value.
+*          WRITE lv_dtl-ad_amount TO lv_value CURRENCY lv_dtl-ad_waers. CONDENSE lv_value.
+*          lv_value = |{ lv_value }  { lv_dtl-ad_waers } |.
+*          APPEND VALUE #( details_desc = 'Advance Amount'
+*                          details_value = lv_value ) TO it_petty_mailbody.
+*        ENDIF.
+*        IF lv_dtl-c_receipt IS NOT INITIAL.
+*          CLEAR: lv_value.
+*          WRITE lv_dtl-c_receipt TO lv_value CURRENCY lv_dtl-bal_waers.CONDENSE lv_value.
+*          lv_value = |{ lv_value } { lv_dtl-bal_waers } |.
+*          APPEND VALUE #( details_desc = 'Cash Receipt'
+*                            details_value = lv_value ) TO it_petty_mailbody.
+*
+*        ENDIF.
+*        IF lv_dtl-bal_amount IS NOT INITIAL.
+*          CLEAR: lv_value.
+*          WRITE lv_dtl-bal_amount TO lv_value CURRENCY lv_dtl-bal_waers.CONDENSE lv_value.
+*          lv_value = |{ lv_value } { lv_dtl-bal_waers } |.
+*          APPEND VALUE #( details_desc = 'Balance Amount'
+*                            details_value = lv_value   ) TO it_petty_mailbody.
+*        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+ENDFORM.                    " GET_TASK_TEXTS
+*&---------------------------------------------------------------------*
+*&      Form  BUILD_MAIL_BODY
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM build_mail_body USING pv_ref_task.
+
+  DATA: lv_text1   TYPE char255,
+        lv_discurr TYPE text20.
+
+*<<< Modification related to CRQ25212 by C90001174
+* This modification is to show all the plan values
+* in the approval email.
+  DATA: lwa_plan_val TYPE zfi_planning_values,
+        lv_tabix     TYPE sytabix,
+        lv_lines     TYPE sytabix.
+*>>> End of modification
+
+  PERFORM get_url.
+*-- Font start
+  PERFORM fill_lines1 USING '<FONT face=Arial size=2>'(040).
+*-- FIRST LINE
+  PERFORM fill_lines1 USING '<HTML><BODY>'.
+
+** Perform the conversion of lines into columns so as to get the formatting
+* Begin of Add CRQ101037 DSDK944747 12.05.2015 10:13:42
+  IF pv_ref_task EQ 'TS90000525' OR pv_ref_task EQ 'TS90000633'.
+*   To fix hyperlink to show in a Single in the email which is sent to Security
+    LOOP AT it_header INTO wa_header.
+      IF wa_header-tdline IS NOT INITIAL.
+        lv_text1 = wa_header-tdline.
+        PERFORM fill_lines1 USING lv_text1.
+*--   New line
+      ELSE.
+        PERFORM fill_lines1 USING '<br><br>'.
+      ENDIF.
+      CLEAR: lv_text1.
+    ENDLOOP.
+  ELSE.
+* End of Add DSDK944747
+    LOOP AT it_header INTO wa_header.
+      lv_text1 = wa_header-tdline.
+      PERFORM fill_lines1 USING lv_text1.
+*-- New line
+      PERFORM fill_lines1 USING c_new_line.
+      CLEAR: lv_text1.
+    ENDLOOP.
+  ENDIF.
+*    lv_text1 = gv_header.
+*    PERFORM fill_lines1 USING lv_text1.
+*    CLEAR: lv_text1.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+* If Header Note1 exists print it
+*<<< Modification related to CRQ13336
+* Business want to see label evenif header text is not maintained
+*  IF NOT it_hn1[] IS INITIAL.
+  IF pv_ref_task EQ 'TS90000436' OR pv_ref_task EQ 'TS90000467'.
+    PERFORM print_notes USING 'HN1'.
+  ENDIF.
+*  ENDIF.
+* Related to CRQ13336, Header note2 should come after mailbody
+* If Header Note2 exists print it
+*  IF NOT it_hn2[] IS INITIAL.
+*    PERFORM print_notes USING 'HN2'.
+*  ENDIF.
+*>>> Modification end CRQ13336
+  IF NOT it_mailbody[] IS INITIAL.
+    IF pv_ref_task EQ 'TS90000436' OR
+       pv_ref_task EQ 'TS90000438'.
+      lv_text1 =  '<table border="1" width="60%"><col width="15" /><col width="85" />'.
+    ELSE.
+* Table headings in the Mail Body
+      lv_text1 =  '<table border="1" width="100%"><col width="50" /><col width="50" />'.
+    ENDIF.
+    PERFORM fill_lines1 USING lv_text1.
+
+    LOOP AT it_mailbody INTO wa_mailbody.
+      lv_text1 =  '<tr>'.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+      CONCATENATE '<td>' '<p><code><B>'
+                     wa_mailbody-details_desc '</B></p></code>' '</td>'
+                    INTO   lv_text1.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+      CONCATENATE '<td>' '<p><code>'
+                     wa_mailbody-details_value '</p></code>' '</td>'
+                    INTO   lv_text1.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+      lv_text1 =  '</tr>'.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+    ENDLOOP.
+
+    lv_text1 =  '</table>'.
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+  ENDIF.
+*<<< Modification related to CRQ25212 by C90001174
+* This modification is to show all the plan values
+* in the approval email.
+  IF it_plan_val IS NOT INITIAL.
+    DESCRIBE TABLE it_plan_val LINES lv_lines.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+    lv_text1 = 'AR Cash Flow:'(015).
+    PERFORM fill_lines1 USING lv_text1.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+    lv_text1 =  '<table border="1" width="30%"><col width="13" /><col width="25" />'.
+    PERFORM fill_lines1 USING lv_text1.
+    LOOP AT it_plan_val INTO lwa_plan_val.
+      lv_tabix = sy-tabix.
+      lv_text1 =  '<tr>'.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+      IF lv_tabix EQ 1.
+        CONCATENATE '<td>' '<p><code><B>'
+                       lwa_plan_val-gjahr '</B></p></code>' '</td>'
+                      INTO   lv_text1.
+        PERFORM fill_lines1 USING lv_text1.
+        CLEAR: lv_text1.
+        CONCATENATE '<td>' '<p><code><B>'
+                       lwa_plan_val-wtjhr '</B></p></code>' '</td>'
+                      INTO   lv_text1.
+        PERFORM fill_lines1 USING lv_text1.
+
+      ELSEIF lv_tabix EQ lv_lines.
+        CONCATENATE '<td>' '<p><code><B>'
+                       lwa_plan_val-gjahr '</B></p></code>' '</td>'
+                      INTO   lv_text1.
+        PERFORM fill_lines1 USING lv_text1.
+        CLEAR: lv_text1.
+        CONCATENATE '<td>' '<p><code>'
+                       lwa_plan_val-wtjhr '</p></code>' '</td>'
+                      INTO   lv_text1.
+        PERFORM fill_lines1 USING lv_text1.
+      ELSE.
+        CONCATENATE '<td>' '<p><code>'
+               lwa_plan_val-gjahr '</p></code>' '</td>'
+              INTO   lv_text1.
+        PERFORM fill_lines1 USING lv_text1.
+        CLEAR: lv_text1.
+        CONCATENATE '<td>' '<p><code>'
+                       lwa_plan_val-wtjhr '</p></code>' '</td>'
+                      INTO   lv_text1.
+        PERFORM fill_lines1 USING lv_text1.
+      ENDIF.
+      CLEAR: lv_text1.
+      lv_text1 =  '</tr>'.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+
+    ENDLOOP.
+    lv_text1 =  '</table>'.
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+  ENDIF.
+*>>> End of modification
+*<<< Modification related to CRQ13336
+  IF pv_ref_task EQ 'TS90000436' OR pv_ref_task EQ 'TS90000467'..
+    PERFORM print_notes USING 'HN2'.
+  ENDIF.
+*>>> Modification end CRQ13336
+
+* If Item Note1 exists print it
+  IF NOT it_in1[] IS INITIAL.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+    PERFORM print_notes USING 'IN1'.
+  ENDIF.
+* If Item Note2 exists print it
+  IF NOT it_in2[] IS INITIAL.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+    PERFORM print_notes USING 'IN2'.
+  ENDIF.
+  IF NOT it_in3[] IS INITIAL.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+    PERFORM print_notes USING 'IN3'.
+  ENDIF.
+
+
+
+  IF gv_arflag EQ 'X'.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+    LOOP AT it_lines1 INTO wa_lines.
+      lv_text1 =  wa_lines-tdline.
+      IF lv_text1 IS INITIAL.
+*-- New line
+        PERFORM fill_lines1 USING c_new_line.
+      ELSE.
+        PERFORM fill_lines1 USING lv_text1.
+      ENDIF.
+      CLEAR: lv_text1, wa_lines.
+    ENDLOOP.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+
+* Table headings in the Mail Body
+    lv_text1 =  '<table border="1" width="70%"><col width="40" /><col width="30" />'.
+    PERFORM fill_lines1 USING lv_text1.
+    LOOP AT it_arstatus INTO wa_arstatus.
+      lv_text1 =  '<tr>'.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+
+      CONCATENATE '<td>' '<p><code><B>'
+                  wa_arstatus-details_desc '</B></p></code>' '</td>'
+            INTO  lv_text1.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+
+*>>> Modification Start CRQ22644/DSDK940895-commented
+*      CONCATENATE '<td>' '<p><code>'
+*                  wa_arstatus-details_value '</p></code>' '</td>'
+*             INTO lv_text1.
+*      PERFORM fill_lines1 USING lv_text1.
+*      CLEAR: lv_text1.
+*>>> Modification End CRQ22644/DSDK940895 -commented
+
+*>>> Modification Start CRQ22644/DSDK940895-Added
+      PERFORM get_status_date_partner USING wa_arstatus
+                                                 lv_text1.
+*>>> Modification Start CRQ22644/DSDK940895-Added
+
+      lv_text1 =  '</tr>'.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1, wa_body.
+    ENDLOOP.
+    "CRQ122651:E0008 begin
+    IF it_ppm IS NOT INITIAL.
+      DATA lv_date(10) TYPE c.
+      lv_text1 = '<tr>'.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+
+      CONCATENATE '<th>' '<p><code><B>'
+                          'Seq no' '</B></p></code>' '</th>'
+                    INTO  lv_text1.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+
+      CONCATENATE '<th>' '<p><code><B>'
+                          'Role' '</B></p></code>' '</th>'
+                    INTO  lv_text1.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+
+      CONCATENATE '<th>' '<p><code><B>'
+                          'Status' '</B></p></code>' '</th>'
+                    INTO  lv_text1.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+
+      CONCATENATE '<th>' '<p><code><B>'
+                          'Approver' '</B></p></code>' '</th>'
+                    INTO  lv_text1.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+
+      CONCATENATE '<th>' '<p><code><B>'
+                          'Approved By' '</B></p></code>' '</th>'
+                    INTO  lv_text1.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+
+      CONCATENATE '<th>' '<p><code><B>'
+                          'Approved on' '</B></p></code>' '</th>'
+                    INTO  lv_text1.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+
+      lv_text1 =  '</tr>'.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1, wa_body.
+
+      LOOP AT zcl_ppm_common=>gt_appstatus INTO DATA(ls_ppm).
+*        CHECK wa_ppm-tdline IS NOT INITIAL.
+        "1
+        lv_text1 =  '<tr>'.
+        PERFORM fill_lines1 USING lv_text1.
+        CLEAR: lv_text1.
+
+        CONCATENATE '<td>' '<p><code><B>'
+                    ls_ppm-seqno '</B></p></code>' '</td>'
+              INTO  lv_text1.
+        PERFORM fill_lines1 USING lv_text1.
+        CLEAR: lv_text1.
+
+        CONCATENATE '<td>' '<p><code><B>'
+                    ls_ppm-role '</B></p></code>' '</td>'
+              INTO  lv_text1.
+        PERFORM fill_lines1 USING lv_text1.
+        CLEAR: lv_text1.
+
+        CONCATENATE '<td>' '<p><code><B>'
+                    ls_ppm-status '</B></p></code>' '</td>'
+              INTO  lv_text1.
+        PERFORM fill_lines1 USING lv_text1.
+        CLEAR: lv_text1.
+
+        CONCATENATE '<td>' '<p><code><B>'
+                    ls_ppm-app_name '</B></p></code>' '</td>'
+              INTO  lv_text1.
+
+        PERFORM fill_lines1 USING lv_text1.
+        CLEAR: lv_text1.
+
+        CONCATENATE '<td>' '<p><code><B>'
+            ls_ppm-app_by '</B></p></code>' '</td>'
+              INTO  lv_text1.
+
+        PERFORM fill_lines1 USING lv_text1.
+        CLEAR: lv_text1.
+
+        WRITE ls_ppm-ap_datetim TO lv_date  DD/MM/YYYY .
+
+        CONCATENATE '<td>' '<p><code><B>'
+            lv_date '</B></p></code>' '</td>'
+                     INTO  lv_text1.
+
+        PERFORM fill_lines1 USING lv_text1.
+        CLEAR: lv_text1.
+
+        lv_text1 =  '</tr>'.
+        PERFORM fill_lines1 USING lv_text1.
+        CLEAR: lv_text1, wa_body.
+
+
+      ENDLOOP.
+    ENDIF.
+    "CRQ122651:E0008 end
+    lv_text1 =  '</table>'.
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+  ENDIF.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+* "Petty Cash
+  IF pv_ref_task EQ 'TS90000432'.
+    IF it_petty_details[] IS NOT INITIAL.
+      lv_text1 =  '<font size="2" face="Courier New" ><table border="1" width="75%"><col width="05" /><col width="30" /><col width="15" /><col width="10" /><col width="15" />'.
+      PERFORM fill_lines1 USING lv_text1.
+      lv_text1 = '<thead><tr><th colspan="5">Details</th></tr></thead>'.
+      PERFORM fill_lines1 USING lv_text1.
+      lv_text1 = |<tr><th>Seq No</th><th>Description</th><th>Amount</th><th>Currency</th><th>Amount({ gv_adcurrency })</th></tr>|.
+      PERFORM fill_lines1 USING lv_text1.
+      LOOP AT it_petty_details INTO wa_petty_details.
+        CLEAR: lv_text1, lv_discurr.
+*       "Modificaton related to DSDK973639 CRQ125627
+*       "Display amount as per currency
+        WRITE wa_petty_details-wrbtr TO lv_discurr CURRENCY wa_petty_details-waers_itm. CONDENSE lv_discurr.
+*       "Modification end  DSDK973639 CRQ125627
+        lv_text1 = |<tr><td>{ wa_petty_details-pbuzei }</td><td>{ wa_petty_details-sgtxt }</td><td>{ lv_discurr }</td><td>{ wa_petty_details-waers_itm }</td><td>{ wa_petty_details-amount_hcurr }</td></tr>|.
+        PERFORM fill_lines1 USING lv_text1.
+      ENDLOOP.
+      lv_text1 =  '</table>'.
+      PERFORM fill_lines1 USING lv_text1.
+      CLEAR: lv_text1.
+      PERFORM fill_lines1 USING lv_text1.
+      PERFORM fill_lines1 USING lv_text1.
+    ENDIF.
+  ENDIF.
+
+
+
+  lv_text1 = gv_footer.
+  PERFORM fill_lines1 USING lv_text1.
+  CLEAR: lv_text1.
+  IF gv_error IS NOT INITIAL.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+    CONCATENATE '<B><U>'
+                'Re-Submitted for Approval'(036)
+                '</U></B>'
+           INTO lv_text1.
+    PERFORM fill_lines1 USING lv_text1.
+    LOOP AT it_error INTO wa_error.
+      lv_text1 = wa_error-tdline.
+      PERFORM fill_lines1 USING lv_text1.
+*-- New line
+      PERFORM fill_lines1 USING c_new_line.
+      CLEAR: lv_text1, wa_error.
+    ENDLOOP.
+*    lv_text1 = gv_error.
+*    PERFORM fill_lines1 USING lv_text1.
+*    CLEAR: lv_text1.
+  ENDIF.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+* Prepare buttons on the end
+  PERFORM prepare_buttons USING lv_text1 pv_ref_task.
+
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+*-- New line
+  PERFORM fill_lines1 USING c_new_line.
+* Additional text
+  IF it_additional IS NOT INITIAL.
+    CLEAR: lv_text1.
+    LOOP AT it_additional INTO wa_additional.
+      lv_text1 = wa_additional-tdline.
+      PERFORM fill_lines1 USING lv_text1.
+*-- New line
+      PERFORM fill_lines1 USING c_new_line.
+      CLEAR: lv_text1.
+    ENDLOOP.
+  ENDIF.
+*-- SEVENTH line
+  PERFORM fill_lines1 USING '</BODY></HTML>'.
+
+
+ENDFORM.                    " BUILD_MAIL_BODY
+*&---------------------------------------------------------------------*
+*&      Form  PREPARE_BUTTONS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LV_TEXT1  text
+*----------------------------------------------------------------------*
+FORM prepare_buttons  USING    pv_text1 pv_ref_task.
+
+  DATA: lv_decikey TYPE swr_decikey VALUE '0001',
+        lv_cntr    TYPE sy-tabix,
+        lv_strtext TYPE char255,
+        lv_nolines TYPE sy-tabix,
+        lv_guid    TYPE guid_32.
+
+  DESCRIBE TABLE it_buttons LINES lv_nolines.
+*<<< Modification related to CRQ16089
+*  Pass parameter as scramble format so outside world wont
+*  understand it
+  CALL FUNCTION 'GUID_CREATE'
+    IMPORTING
+      ev_guid_32 = lv_guid.
+*>>> Modification end CRQ16089
+
+  LOOP AT it_buttons INTO wa_buttons.
+    IF wa_buttons-deckey IS NOT INITIAL.
+      lv_cntr = wa_buttons-deckey + 1.
+    ELSE.
+      lv_cntr = lv_cntr + 1.
+      READ TABLE it_buttons INTO wa_buttons INDEX lv_cntr.
+    ENDIF.
+*    lv_cntr = lv_cntr + 1.
+*    READ TABLE it_buttons INTO wa_buttons INDEX lv_cntr.
+    lv_decikey = lv_cntr.
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+      EXPORTING
+        input  = lv_decikey
+      IMPORTING
+        output = lv_decikey.
+*<<< Modification related to CRQ16089
+    IF sy-sysid NE 'DSP'.
+* Approve Button with Action call
+*      CONCATENATE text-003
+*                  lv_decikey         " c_approve
+*                  '&dc='(004)
+*                  c_docommit
+*                  '&l=EN&u='(005)
+*                  wa_poagents-userid
+*                  '&wi='(006)
+*                  wa_wi_dtls-wi_id
+*                  '&sc='(009)
+*                  gv_seccode
+*             INTO pv_text1.
+      CONCATENATE text-003
+               lv_decikey         " c_approve
+               lv_guid
+               gv_seccode
+          INTO pv_text1.
+    ELSE.
+* Approve Button with Action call
+*      CONCATENATE text-010
+*                  lv_decikey         " c_approve
+*                  '&dc='(004)
+*                  c_docommit
+*                  '&l=EN&u='(005)
+*                  wa_poagents-userid
+*                  '&wi='(006)
+*                  wa_wi_dtls-wi_id
+*                  '&sc='(009)
+*                  gv_seccode
+*             INTO pv_text1.
+      CONCATENATE text-010
+          lv_decikey         " c_approve
+          lv_guid
+          gv_seccode
+     INTO pv_text1.
+    ENDIF.
+*
+*>>> Modification end CRQ16089
+    CONCATENATE 'border: 1px #EEEEff ridge;">'(037)
+                 wa_buttons-name
+                '</a>'
+           INTO lv_strtext.
+    PERFORM fill_lines2 USING pv_text1
+                              text-001
+                              text-000
+                              text-000
+                              ''.
+    IF lv_cntr NE lv_nolines.
+      PERFORM fill_lines2 USING lv_strtext
+                                text-000
+                                text-000
+                                text-000
+                                '6'.
+    ELSEIF lv_cntr EQ lv_nolines.
+      PERFORM fill_lines2 USING lv_strtext                  "text-007
+                                text-000
+                                text-000
+                                text-000
+                                ''.
+    ENDIF.
+* Reject Button with Action call
+    CLEAR: pv_text1, wa_buttons, lv_strtext.
+  ENDLOOP.
+
+ENDFORM.                    " PREPARE_BUTTONS
+
+
+*&---------------------------------------------------------------------*
+*&      Form  CONVERT_TLINES
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM convert_tlines USING p_ref_task.
+
+  DATA: lv_flag          TYPE char3,
+        lv_cntr1         TYPE sy-tabix,
+        lv_details_desc  TYPE char100,
+        lv_details_value TYPE char100,
+        lv_position      TYPE string,
+        lv_username      TYPE string,
+        lv_userid        TYPE string,
+        lv_str1          TYPE string,
+        lv_str2          TYPE string,
+        lv_str3          TYPE string,
+        lv_number        TYPE char10,
+        lv_item          TYPE char5,
+        lv_tdobject      TYPE thead-tdobject,
+        lv_tdid          TYPE thead-tdid,
+        lv_tdname        TYPE thead-tdname,
+        lv_tdtext        TYPE thead-tdname,
+        lv_bl00          TYPE c. " Business leave indicator CHG1365
+
+
+*<<< Modification related to CRQ25212 by C90001174
+* This modification is to show all the plan values
+* in the approval email.
+  DATA lwa_plan_val TYPE zfi_planning_values.
+*>>> End of modification.
+
+  CONSTANTS:
+        con_tab  TYPE c VALUE cl_abap_char_utilities=>horizontal_tab.
+
+  LOOP AT it_lines INTO wa_lines.
+    CASE wa_lines-tdline.
+*<<< Modification related to CRQ25212 by C90001174
+* This modification is to show all the plan values
+* in the approval email.
+*      WHEN 'Header' OR 'Details' OR 'Footer' OR 'Buttons' OR
+*           'AR' OR 'AR1' OR 'HN1' OR 'HN2' OR 'IN1' OR 'IN2' OR
+*           'IN3' OR 'Error' OR 'Additional'.
+      WHEN 'Header' OR 'Details' OR 'Footer' OR 'Buttons' OR
+           'AR' OR 'AR1' OR 'HN1' OR 'HN2' OR 'IN1' OR 'IN2' OR
+           'IN3' OR 'Error' OR 'Additional' OR 'PV' OR 'PPM'. "CRQ122651:E0008.
+*>>> End of modification
+        CLEAR: lv_flag.
+* Begin Add C120032 CHG1365
+        IF wa_key-subty(2) = 'BL' AND wa_key IS NOT INITIAL.
+          IF lv_flag NE lv_bl00 AND lv_bl00 = 'H'.
+            CLEAR wa_header.
+            APPEND INITIAL LINE TO it_header.
+            wa_header-tdline = 'Event Title & Description:'.
+            APPEND wa_header TO it_header.
+            CLEAR: wa_header,lv_bl00.
+            APPEND INITIAL LINE TO it_header.
+            LOOP AT it_text INTO DATA(wa_text).
+              wa_header-tdline = wa_text-textline.
+              APPEND wa_header TO it_header.
+              CLEAR: wa_header.
+            ENDLOOP.
+          ENDIF.
+        ENDIF.
+* End Add C120032 CHG1365
+* Begin Add C90005867
+        IF wa_key-subty(4) = 'WR13' AND wa_key IS NOT INITIAL.
+          IF lv_flag NE lv_bl00 AND lv_bl00 = 'W'.
+            CLEAR wa_header.
+            APPEND INITIAL LINE TO it_header.
+            wa_header-tdline = 'Country Travelling To:'.
+            APPEND wa_header TO it_header.
+            CLEAR: wa_header,lv_bl00.
+            APPEND INITIAL LINE TO it_header.
+            LOOP AT it_text INTO DATA(wa_text1).
+              wa_header-tdline = wa_text1-textline.
+              APPEND wa_header TO it_header.
+              CLEAR: wa_header.
+            ENDLOOP.
+          ENDIF.
+        ENDIF.
+* End Add C90005867
+
+      WHEN OTHERS.
+    ENDCASE.
+    IF lv_flag EQ 'H'.
+*      IF gv_header IS INITIAL.
+*        gv_header = wa_lines-tdline.
+*      ELSE.
+*        CONCATENATE gv_header
+*                    wa_lines-tdline
+*               INTO gv_header
+*           SEPARATED BY ''.
+*      ENDIF.
+      wa_header-tdline = wa_lines-tdline.
+      APPEND wa_header TO it_header.
+      CLEAR: wa_header.
+    ELSEIF lv_flag EQ 'D'.
+      SPLIT wa_lines-tdline
+          AT ':'
+        INTO lv_details_desc
+             lv_details_value.
+*<<<  Modification related to PO Mobile Approval
+*     Business want to see all details whethere its having values or not
+      IF p_ref_task EQ 'TS90000436'.
+        IF NOT lv_details_desc IS INITIAL.
+          CONCATENATE lv_details_desc
+                       ':'
+                  INTO wa_mailbody-details_desc.
+          wa_mailbody-details_value = lv_details_value.
+          APPEND wa_mailbody TO it_mailbody.
+          CLEAR: wa_mailbody.
+        ENDIF.
+      ELSE.
+        IF NOT lv_details_desc IS INITIAL AND
+           NOT lv_details_value IS INITIAL.
+          CONCATENATE lv_details_desc
+                      ':'
+                 INTO wa_mailbody-details_desc.
+          wa_mailbody-details_value = lv_details_value.
+          APPEND wa_mailbody TO it_mailbody.
+          CLEAR: wa_mailbody.
+        ENDIF.
+      ENDIF.
+*>>>  Modification end
+    ELSEIF lv_flag EQ 'F'.
+      IF gv_footer IS INITIAL.
+        gv_footer = wa_lines-tdline.
+      ELSE.
+        CONCATENATE gv_footer
+                    wa_lines-tdline
+               INTO gv_footer
+           SEPARATED BY ''.
+      ENDIF.
+    ELSEIF lv_flag EQ 'B'.
+      TRY.
+*        BREAK C90000111.
+          IF wa_lines-tdline CA ':'.
+            SPLIT wa_lines-tdline AT ':' INTO wa_buttons-name wa_buttons-deckey.
+            IF wa_buttons-deckey CO '0123456789' AND wa_buttons-deckey IS NOT INITIAL.
+            ELSE.
+              wa_buttons-name = wa_lines-tdline.
+            ENDIF.
+          ELSE.
+            wa_buttons-name = wa_lines-tdline.
+          ENDIF.
+        CATCH cx_root.
+          wa_buttons-name = wa_lines-tdline.
+      ENDTRY.
+      APPEND wa_buttons TO it_buttons.
+      CLEAR: wa_buttons.
+    ELSEIF lv_flag EQ 'A'.
+      APPEND wa_lines TO it_lines1.
+      CLEAR: wa_lines.
+      APPEND wa_lines TO it_lines1.
+    ELSEIF lv_flag EQ 'R'.
+      lv_cntr1 = lv_cntr1 + 1.
+      IF lv_cntr1 EQ 1.
+        IF wa_lines-tdline IS NOT INITIAL.
+          CLEAR: lv_userid, lv_username, lv_position,
+                 lv_str1, lv_str2.
+
+
+          SPLIT wa_lines-tdline AT 'DUB' INTO lv_str1 lv_str2.
+          IF lv_str1 EQ wa_lines-tdline.
+            SPLIT wa_lines-tdline AT 'C90' INTO lv_str1 lv_str2.
+            IF lv_str1 EQ wa_lines-tdline.
+*               For Others Users
+              CLEAR : lv_str1,lv_str2.
+              PERFORM get_strings USING wa_lines-tdline
+                                        lv_str1
+                                        lv_str2
+                                        lv_userid
+                                        lv_username.
+
+
+            ELSE.
+              CONCATENATE 'C90'
+                          lv_str2
+                     INTO lv_str2.
+            ENDIF.
+          ELSE.
+            CONCATENATE 'DUB'
+                        lv_str2
+                   INTO lv_str2.
+          ENDIF.
+*<<<      Modification related to CRQ16089
+          IF lv_str2 IS NOT INITIAL.
+*>>>      Modification end CRQ16089
+            lv_userid = lv_str2+0(9).
+            lv_username = lv_str2+10.
+*<<<      Modification related to CRQ16089
+          ENDIF.
+*>>>      Modification end CRQXXX
+          lv_position = lv_str1.
+          CONDENSE: lv_userid, lv_username, lv_position.
+          CONCATENATE lv_position
+                      ':'
+                 INTO lv_position.
+          CONCATENATE '('
+                      lv_userid
+                      ')'
+                 INTO lv_userid.
+          CONCATENATE lv_username
+                      lv_userid
+                 INTO lv_username
+            SEPARATED BY ''.
+          CONCATENATE lv_position
+                      lv_username
+                 INTO wa_arstatus-details_desc
+            SEPARATED BY '        '
+            RESPECTING BLANKS.
+        ENDIF.
+*        wa_arstatus-details_desc = wa_lines-tdline.
+      ELSE.
+        wa_arstatus-details_value = wa_lines-tdline.
+        APPEND wa_arstatus TO it_arstatus.
+        CLEAR: wa_arstatus.
+        lv_cntr1 = 0.
+      ENDIF.
+    ELSEIF lv_flag EQ 'HN1'.
+      CLEAR: lv_tdname, gv_hn1text.
+      SPLIT wa_lines-tdline AT '/'
+       INTO lv_tdobject lv_tdid lv_number gv_hn1text.
+      PERFORM apply_conversion_exits USING lv_number
+                                           lv_item.
+      lv_tdname = lv_number.
+      PERFORM read_text TABLES it_hn1
+                        USING lv_tdobject
+                              lv_tdid
+                              lv_tdname.
+    ELSEIF lv_flag EQ 'HN2'.
+      IF wa_lines-tdline IS NOT INITIAL.
+        CLEAR: lv_tdname, gv_hn2text.
+        SPLIT wa_lines-tdline AT '/'
+         INTO lv_tdobject lv_tdid lv_number gv_hn2text.
+      ENDIF.
+*      SPLIT wa_lines-tdline AT '/'
+*       INTO lv_tdobject lv_tdid lv_number gv_hn2text.
+      PERFORM apply_conversion_exits USING lv_number
+                                           lv_item.
+      lv_tdname = lv_number.
+      PERFORM read_text TABLES it_hn2
+                        USING lv_tdobject
+                              lv_tdid
+                              lv_tdname.
+
+    ELSEIF lv_flag EQ 'IN1'.
+      CLEAR: lv_tdname, gv_in1text.
+      SPLIT wa_lines-tdline AT '/'
+       INTO lv_tdobject lv_tdid
+            lv_number lv_item gv_in1text.
+      PERFORM apply_conversion_exits USING lv_number
+                                           lv_item.
+      CONCATENATE lv_number
+                  lv_item
+             INTO lv_tdname.
+      PERFORM read_text TABLES it_in1
+                        USING lv_tdobject
+                              lv_tdid
+                              lv_tdname.
+    ELSEIF lv_flag EQ 'IN2'.
+      CLEAR: lv_tdname.
+      SPLIT wa_lines-tdline AT '/'
+       INTO lv_tdobject lv_tdid
+            lv_number lv_item gv_in2text.
+      PERFORM apply_conversion_exits USING lv_number
+                                           lv_item.
+      CONCATENATE lv_number
+                  lv_item
+             INTO lv_tdname.
+      PERFORM read_text TABLES it_in2
+                        USING lv_tdobject
+                              lv_tdid
+                              lv_tdname.
+    ELSEIF lv_flag EQ 'IN3'.
+      CLEAR: lv_tdname.
+      SPLIT wa_lines-tdline AT '/'
+       INTO lv_tdobject lv_tdid
+            lv_number lv_item gv_in3text.
+      PERFORM apply_conversion_exits USING lv_number
+                                           lv_item.
+      CONCATENATE lv_number
+                  lv_item
+             INTO lv_tdname.
+      PERFORM read_text TABLES it_in3
+                        USING lv_tdobject
+                              lv_tdid
+                              lv_tdname.
+    ELSEIF lv_flag EQ 'E'.
+*      IF gv_error IS INITIAL.
+*        gv_error = wa_lines-tdline.
+*      ELSE.
+*        CONCATENATE gv_error
+*                    wa_lines-tdline
+*               INTO gv_error
+*           SEPARATED BY ''.
+*      ENDIF.
+      wa_error-tdline = wa_lines-tdline.
+      APPEND wa_error TO it_error.
+      CLEAR: wa_error.
+
+    ELSEIF lv_flag EQ 'AD'.
+      wa_additional-tdline = wa_lines-tdline.
+      APPEND wa_additional TO it_additional.
+      CLEAR: wa_additional.
+*<<< Modification related to CRQ25212 by C90001174
+* This modification is to show all the plan values
+* in the approval email.
+    ELSEIF lv_flag EQ 'P'.
+
+      IF NOT wa_lines-tdline+0(13) IS INITIAL AND
+         NOT wa_lines-tdline+14(25) IS INITIAL.
+        lwa_plan_val-gjahr = wa_lines-tdline+0(13).
+        lwa_plan_val-wtjhr = wa_lines-tdline+14(25).
+        APPEND lwa_plan_val TO it_plan_val.
+        CLEAR: lwa_plan_val.
+      ENDIF.
+* End of modification
+      "-CRQ122651:E0008 begin
+    ELSEIF lv_flag EQ 'PPM'.
+      wa_ppm-tdline = wa_lines-tdline.
+      APPEND wa_ppm TO it_ppm.
+      CLEAR: wa_ppm.
+      "-CRQ122651:E0008 end
+    ENDIF.
+    CASE wa_lines-tdline.
+      WHEN 'Header'.
+        lv_flag = 'H'.
+        lv_bl00 = 'H'." Business leave indicator.
+        if wa_key-subty(4) = 'WR13'.
+          lv_bl00 = 'W'. " WFH overseas leave indicator.
+        endif.
+      WHEN 'Details'.
+        lv_flag = 'D'.
+      WHEN 'Footer'.
+        lv_flag = 'F'.
+      WHEN 'Buttons'.
+        lv_flag = 'B'.
+      WHEN 'AR'.
+        lv_flag = 'A'.
+        gv_arflag = 'X'.
+      WHEN 'AR1'.
+        lv_flag = 'R'.
+        gv_arflag = 'X'.
+      WHEN 'HN1'.
+        lv_flag = 'HN1'.
+      WHEN 'HN2'.
+        lv_flag = 'HN2'.
+      WHEN 'IN1'.
+        lv_flag = 'IN1'.
+      WHEN 'IN2'.
+        lv_flag = 'IN2'.
+      WHEN 'IN3'.
+        lv_flag = 'IN3'.
+      WHEN 'Error'.
+        lv_flag = 'E'.
+      WHEN 'Additional'.
+        lv_flag = 'AD'.
+*<<< Modification related to CRQ25212 by C90001174
+* This modification is to show all the plan values
+* in the approval email.
+      WHEN 'PV'.
+        lv_flag = 'P'.
+* End of modification.
+      WHEN 'PPM'.
+        lv_flag = 'PPM'.
+      WHEN OTHERS.
+    ENDCASE.
+    CLEAR: wa_lines.
+  ENDLOOP.
+
+ENDFORM.                    " CONVERT_TLINES
+
+
+*&---------------------------------------------------------------------*
+*&      Form  CONVERT_INTO_RTF
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM convert_into_rtf.
+
+  DATA: lf_formname           TYPE tdsfname.
+  DATA: lf_fm_name            TYPE rs38l_fnam.
+
+  DATA: output_options     TYPE ssfcompop,
+        xsfparam_line      TYPE ssfxsfp,
+        control_parameters TYPE ssfctrlop,
+        output_data        TYPE ssfcrescl,
+        fm_name            TYPE rs38l_fnam.
+
+* silent mode ON
+  output_options-tdimmed = space.
+  output_options-tdnewid = space.
+  control_parameters-no_dialog = 'X'.
+  control_parameters-getotf = 'X'.
+
+* determine smartform function module for invoice
+  CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+    EXPORTING
+      formname           = 'ZUTL_WF_EMAIL'
+    IMPORTING
+      fm_name            = lf_fm_name
+    EXCEPTIONS
+      no_form            = 1
+      no_function_module = 2
+      OTHERS             = 3.
+  IF sy-subrc <> 0.
+*   error handling
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    EXIT.
+  ELSE.
+    CALL FUNCTION lf_fm_name
+      EXPORTING
+        control_parameters = control_parameters
+        output_options     = output_options
+        user_settings      = space
+        header             = gv_header
+        footer             = gv_footer
+      IMPORTING
+        job_output_info    = output_data
+      TABLES
+        details            = it_mailbody
+      EXCEPTIONS
+        formatting_error   = 1
+        internal_error     = 2
+        send_error         = 3
+        user_canceled      = 4
+        OTHERS             = 5.
+    IF sy-subrc <> 0.
+*   error handling
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      EXIT.
+    ELSE.
+      it_otf = output_data-otfdata.
+      PERFORM mailtxt_otf.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.                    " CONVERT_INTO_RTF
+
+
+*&---------------------------------------------------------------------*
+*&      Form  MAILTXT_OTF
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM mailtxt_otf .
+
+  DATA: lv_string TYPE char4000.
+  DATA: ls_otf   LIKE LINE OF it_otf,
+        it_line  TYPE STANDARD TABLE OF tline,
+        ls_tline TYPE tline,
+        lv_txt   TYPE c.
+
+  CALL FUNCTION 'CONVERT_OTF'
+    TABLES
+      otf                   = it_otf
+      lines                 = it_line
+    EXCEPTIONS
+      err_max_linewidth     = 1
+      err_format            = 2
+      err_conv_not_possible = 3
+      err_bad_otf           = 4
+      OTHERS                = 5.
+  IF sy-subrc <> 0.
+*   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+
+  LOOP AT it_line INTO ls_tline.
+    IF ls_tline-tdline IS INITIAL AND lv_txt IS INITIAL.
+      CONTINUE.
+    ELSE.
+      lv_txt = 'X'.
+    ENDIF.
+
+    CLEAR wa_body.
+    IF ls_tline-tdline IS INITIAL.
+      ls_tline-tdline = '<br><br>'.
+    ENDIF.
+    wa_body-line = ls_tline-tdline.
+    APPEND wa_body TO it_body.
+  ENDLOOP.
+
+ENDFORM.                    " MAILTXT_OTF
+
+
+
+*---------------------------------------------------------------------*
+*       FORM PROTOCOL_UPDATE                                          *
+*---------------------------------------------------------------------*
+*       The messages are collected for the processing protocol.       *
+*---------------------------------------------------------------------*
+
+FORM protocol_update.
+
+  CALL FUNCTION 'NAST_PROTOCOL_UPDATE'
+    EXPORTING
+      msg_arbgb = syst-msgid
+      msg_nr    = syst-msgno
+      msg_ty    = syst-msgty
+      msg_v1    = syst-msgv1
+      msg_v2    = syst-msgv2
+      msg_v3    = syst-msgv3
+      msg_v4    = syst-msgv4
+    EXCEPTIONS
+      OTHERS    = 1.
+
+ENDFORM.                    "PROTOCOL_UPDATE
+
+
+*&---------------------------------------------------------------------*
+*&      Form  IDENTIFY_AGENTS_for_WI
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM identify_agents_for_wi USING p_status.
+
+  DATA: it_wiid        TYPE swrtwiid,
+        wa_wiid        TYPE swwwihead, " sww_wiid,
+        lit_swwwihead  TYPE STANDARD TABLE OF swwwihead INITIAL SIZE 0,
+        lit_swwwihead1 TYPE STANDARD TABLE OF swwwihead INITIAL SIZE 0,
+        lv_subrc       TYPE sy-subrc,
+        lv_timestamp   TYPE timestampl,
+        lv_top_wi_id   TYPE swwwihead-wi_id,
+        lwa_zswwwiauth TYPE zswwwiauth.
+
+* First check whether the Approver is trying to re-approve already approved work item
+  SELECT SINGLE *
+    INTO lwa_zswwwiauth
+    FROM zswwwiauth
+   WHERE wi_id EQ gv_wiid.
+  IF sy-subrc EQ 0 AND lwa_zswwwiauth-aedat IS NOT INITIAL AND
+     lwa_zswwwiauth-actedby IS NOT INITIAL.
+    gv_retcode = '90'.
+    wa_message_lines-msg_type = 'E'.
+    CONCATENATE 'Work Item already processed by'(038)
+                lwa_zswwwiauth-actedby
+           INTO wa_message_lines-line
+      SEPARATED BY ''.
+*   Work item has never been approved
+  ELSE.
+*   Get the top work item id
+    SELECT SINGLE top_wi_id
+           wi_rh_task
+      INTO (lv_top_wi_id, gv_wirhtask)
+      FROM swwwihead
+     WHERE wi_id EQ gv_wiid.
+    IF sy-subrc EQ 0.
+      gv_top_wi_id = lv_top_wi_id.
+      SELECT *
+        INTO TABLE lit_swwwihead  " wa_wiid
+        FROM swwwihead
+       WHERE wi_type   EQ 'W'
+*         AND wi_stat   EQ c_ready
+         AND top_wi_id EQ lv_top_wi_id.
+      IF sy-subrc EQ 0.
+*<<<   Modification done by C90000111
+*      Get actual approval of completed item and put it into
+*      an internal table
+        lit_swwwihead1[] = lit_swwwihead[].
+        DELETE lit_swwwihead1 WHERE wi_stat NE 'COMPLETED'.
+        LOOP AT lit_swwwihead1 INTO wa_wiid.
+          MOVE wa_wiid-wi_aagent TO wa_capprover-wi_aagent.
+          APPEND wa_capprover TO it_capprover.
+        ENDLOOP.
+        REFRESH: lit_swwwihead1.
+*>>>   Modification end C90000111
+        DELETE lit_swwwihead WHERE wi_stat EQ 'COMPLETED'
+                                OR wi_stat EQ 'CANCELLED'.
+        IF lit_swwwihead[] IS NOT INITIAL.
+          READ TABLE lit_swwwihead INTO wa_wiid INDEX 1.
+*<<<      Modification related to CRQ11740
+*          IF wa_wiid-wi_stat EQ c_ready OR
+*             ( ( wa_wiid-wi_stat EQ c_inprogress OR
+*                 wa_wiid-wi_stat EQ c_reserved ) AND
+*                wa_wiid-wi_aagent EQ gv_approver ).
+          IF wa_wiid-wi_stat EQ c_ready OR
+             wa_wiid-wi_stat EQ c_inprogress OR
+             wa_wiid-wi_stat EQ c_reserved   OR
+             wa_wiid-wi_stat EQ c_waiting.
+*>>>      Modification end CRQ11740
+            wa_swwwihead-wi_id = wa_wiid-wi_id.
+*          APPEND wa_wiid TO it_wiid.
+            APPEND wa_wiid-wi_id TO it_wiid.
+*   Identify agents for this decision work item including substitutes if any
+            CALL FUNCTION 'SAP_WAPI_GET_WI_AGENTS'
+              EXPORTING
+                workitems        = it_wiid
+                user             = ''
+                with_substitutes = 'X'
+              IMPORTING
+                return_code      = lv_subrc
+                timestamp        = lv_timestamp
+                wi_agents        = it_agents.
+*<<<<       DSDK936296
+            p_status = wa_wiid-wi_stat.
+*           gv_wirhtask = wa_wiid-wi_id.   "  DSDK947083 Avinash Uncomment after Rec Transports moved
+*>>>>       DSDK936296
+          ELSE.
+            gv_retcode = '98'.
+            wa_message_lines-msg_type = 'E'.
+            wa_message_lines-line = 'Work Item is not in Actionable State'(026).
+          ENDIF.
+        ELSE.
+          gv_retcode = '98'.
+          wa_message_lines-msg_type = 'E'.
+          wa_message_lines-line = 'Work Item is not in Actionable State'(026).
+        ENDIF.
+      ELSE.
+        gv_retcode = '98'.
+        wa_message_lines-msg_type = 'E'.
+        wa_message_lines-line = 'Work Item is not in Actionable State'(026).
+      ENDIF.
+    ELSE.
+      gv_retcode = '96'.
+      wa_message_lines-msg_type = 'E'.
+      wa_message_lines-line = 'Work Item could not be found'(039).
+    ENDIF.
+  ENDIF.
+
+ENDFORM.                    " IDENTIFY_AGENTS_for_WI
+
+
+*&---------------------------------------------------------------------*
+*&      Form  IDENTIFY_SUBSTITUTES
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM identify_substitutes.
+
+  DATA: it_wiid      TYPE swrtwiid,
+        wa_wiid      TYPE sww_wiid,
+        lv_subrc     TYPE sy-subrc,
+        lv_timestamp TYPE timestampl,
+        lwa_poagents TYPE zmm_po_agent,
+        lit_poagents TYPE STANDARD TABLE OF zmm_po_agent INITIAL SIZE 0.
+
+
+  lit_poagents[] = it_poagents[].
+  LOOP AT lit_poagents INTO lwa_poagents.
+*   Get all the active substitutes for the approver
+    SELECT *
+      INTO TABLE it_sub
+      FROM hrus_d2
+     WHERE us_name EQ lwa_poagents-userid+2
+       AND begda LE sy-datum
+       AND endda GE sy-datum
+       AND active EQ 'X'.
+    IF sy-subrc EQ 0.
+      LOOP AT it_sub INTO wa_sub.
+        CONCATENATE 'US'
+                    wa_sub-rep_name
+               INTO wa_poagents-userid.
+        APPEND wa_poagents TO it_poagents.
+        CLEAR: wa_sub, lwa_poagents.
+      ENDLOOP.
+    ENDIF.
+    CLEAR: lwa_poagents.
+  ENDLOOP.
+
+ENDFORM.                    " IDENTIFY_SUBSTITUTES
+
+
+*&---------------------------------------------------------------------*
+*&      Form  READ_TEXT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_IT_HN1  text
+*      -->P_LV_TDOBJECT  text
+*      -->P_LV_TDID  text
+*      -->P_LV_TDNAME  text
+*----------------------------------------------------------------------*
+FORM read_text  TABLES pit_lines   STRUCTURE tline
+                 USING pv_tdobject TYPE thead-tdobject
+                       pv_tdid     TYPE thead-tdid
+                       pv_tdname   TYPE thead-tdname.
+
+* Read the Header Notes / Item Notes
+  CALL FUNCTION 'READ_TEXT'
+    EXPORTING
+      id                      = pv_tdid
+      language                = sy-langu
+      name                    = pv_tdname
+      object                  = pv_tdobject
+    TABLES
+      lines                   = pit_lines
+    EXCEPTIONS
+      id                      = 1
+      language                = 2
+      name                    = 3
+      not_found               = 4
+      object                  = 5
+      reference_check         = 6
+      wrong_access_to_archive = 7
+      OTHERS                  = 8.
+  IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+
+ENDFORM.                    " READ_TEXT
+
+
+*&---------------------------------------------------------------------*
+*&      Form  PRINT_NOTES
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_1438   text
+*----------------------------------------------------------------------*
+FORM print_notes  USING p_note TYPE char3.
+
+  DATA: lv_text1 TYPE char255.
+
+  IF p_note EQ 'HN1'.
+    CONCATENATE '<B><U>' gv_hn1text '</U></B>'
+           INTO lv_text1.
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*   Print Header Note1
+    LOOP AT it_hn1 INTO wa_lines.
+      lv_text1 =  wa_lines-tdline.
+      IF lv_text1 IS INITIAL.
+*-- New line
+        PERFORM fill_lines1 USING c_new_line.
+      ELSE.
+        PERFORM fill_lines1 USING lv_text1.
+      ENDIF.
+      CLEAR: lv_text1, wa_lines.
+    ENDLOOP.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+
+
+  ELSEIF p_note EQ 'HN2'.
+
+    CONCATENATE '<B><U>' gv_hn2text '</U></B>'
+           INTO lv_text1.
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*   Print Header Note1
+    LOOP AT it_hn2 INTO wa_lines.
+      lv_text1 =  wa_lines-tdline.
+      IF lv_text1 IS INITIAL.
+*-- New line
+        PERFORM fill_lines1 USING c_new_line.
+      ELSE.
+        PERFORM fill_lines1 USING lv_text1.
+      ENDIF.
+      CLEAR: lv_text1, wa_lines.
+    ENDLOOP.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+
+
+  ELSEIF p_note EQ 'IN1'.
+    CONCATENATE '<B><U>' gv_in1text '</U></B>'
+           INTO lv_text1.
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*   Print Header Note1
+    LOOP AT it_in1 INTO wa_lines.
+      lv_text1 =  wa_lines-tdline.
+      IF lv_text1 IS INITIAL.
+*-- New line
+        PERFORM fill_lines1 USING c_new_line.
+      ELSE.
+        PERFORM fill_lines1 USING lv_text1.
+      ENDIF.
+      CLEAR: lv_text1, wa_lines.
+    ENDLOOP.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+
+
+  ELSEIF p_note EQ 'IN2'.
+
+    CONCATENATE '<B><U>' gv_in2text '</U></B>'
+           INTO lv_text1.
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*   Print Header Note1
+    LOOP AT it_in2 INTO wa_lines.
+      lv_text1 =  wa_lines-tdline.
+      IF lv_text1 IS INITIAL.
+*-- New line
+        PERFORM fill_lines1 USING c_new_line.
+      ELSE.
+        PERFORM fill_lines1 USING lv_text1.
+      ENDIF.
+      CLEAR: lv_text1, wa_lines.
+    ENDLOOP.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+
+  ELSEIF p_note EQ 'IN3'.
+
+    CONCATENATE '<B><U>' gv_in3text '</U></B>'
+           INTO lv_text1.
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*   Print Header Note1
+    LOOP AT it_in3 INTO wa_lines.
+      lv_text1 =  wa_lines-tdline.
+      IF lv_text1 IS INITIAL.
+*-- New line
+        PERFORM fill_lines1 USING c_new_line.
+      ELSE.
+        PERFORM fill_lines1 USING lv_text1.
+      ENDIF.
+      CLEAR: lv_text1, wa_lines.
+    ENDLOOP.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+*-- New line
+    PERFORM fill_lines1 USING c_new_line.
+  ENDIF.
+
+ENDFORM.                    " PRINT_NOTES
+
+
+*&---------------------------------------------------------------------*
+*&      Form  APPLY_CONVERSION_EXITS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LV_NUMBER  text
+*      -->P_LV_ITEM  text
+*----------------------------------------------------------------------*
+FORM apply_conversion_exits  USING pv_number TYPE char10
+                                   pv_item   TYPE char5.
+
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = pv_number
+    IMPORTING
+      output = pv_number.
+
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = pv_item
+    IMPORTING
+      output = pv_item.
+
+ENDFORM.                    " APPLY_CONVERSION_EXITS
+*&---------------------------------------------------------------------*
+*&      Form  GET_STATUS_DATE_PARTNER
+*&---------------------------------------------------------------------*
+*    to extract status,date & partner & add as  column into html table
+*----------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+FORM get_status_date_partner USING wa_arstatus TYPE zsd_s_mailbody
+                                   lv_text1 TYPE char255.
+
+  DATA:      lv_part1              TYPE c LENGTH 15,
+             lv_part2              TYPE c LENGTH 15,
+             lv_part3              TYPE c LENGTH 15,
+             lv_status_date        TYPE c LENGTH 25,
+             lv_partner_type       TYPE c LENGTH 25,
+             lv_partner_type_blank TYPE c LENGTH 25 VALUE '',
+* <<< Begin of Addition : CRQ26290 - DSDK942706 by C9000286 >>>
+* Variable declaration to accommodate approval text
+             lv_part4              TYPE c LENGTH 15,
+             lv_part5              TYPE c LENGTH 15,
+             lv_part6              TYPE c LENGTH 15,
+             lv_approved_by        TYPE c LENGTH 50,
+             lv_col_count          TYPE i,
+             lv_user_id            TYPE xubname,
+             lv_user_name          TYPE ad_namtext.
+* <<< End of Addition : CRQ26290 - DSDK942706 by C9000286 >>>
+
+  DATA : BEGIN OF lv_itab OCCURS 0,
+           txt TYPE c LENGTH 15,
+         END OF lv_itab,
+         wa_lv_itab LIKE LINE OF lv_itab.
+
+* Cases Handle here
+
+* 1) When both role is missing and Approved by string was wrongly concatenated
+*    Manager: Mr.XYZ (DUB0000) Approved 16.09.2014  Approved
+* 2) When both role is missing
+*   Manager: Mr.XYZ (DUB0000) Approved 16.09.2014            Approved by C90001183
+* 3) When both role is avaialbe but approved by string was wrongly concatenated
+*   Manager: Mr.XYZ (DUB0000) Approved 16.09.2014  INTIATOR  Approved by
+
+
+  "Splitting string to diffrentiate between status , date and partner type
+  SPLIT wa_arstatus-details_value AT ' '
+     INTO TABLE lv_itab.
+  DELETE lv_itab WHERE txt EQ ' '.
+  LOOP AT lv_itab INTO wa_lv_itab .
+    CASE sy-tabix.
+      WHEN 1.
+        lv_part1 = wa_lv_itab-txt.
+      WHEN 2.
+        lv_part2 = wa_lv_itab-txt.
+      WHEN 3.
+        lv_part3 = wa_lv_itab-txt.
+      WHEN 4.                                               " CRQ26290
+        lv_part4 = wa_lv_itab-txt.
+      WHEN 5.                                               " CRQ26290
+        lv_part5 = wa_lv_itab-txt.
+      WHEN 6.                                               " CRQ26290
+        lv_part6 = wa_lv_itab-txt.
+      WHEN OTHERS.
+
+    ENDCASE.
+  ENDLOOP.
+
+* <<< Begin of Addition : CRQ26290 - DSDK942706 by C9000286 >>>
+* Count the No of lines from workflow log for this activity
+  DESCRIBE TABLE lv_itab LINES lv_col_count.
+* If line count is 6
+  IF lv_col_count EQ 6.
+* Join text from varaibles containning values of User ID and approval text
+    CONCATENATE lv_part4 lv_part5 lv_part6 INTO lv_approved_by SEPARATED BY space.
+* Set the value of user id in a local varaible to be used to get the name of user from master record
+    lv_user_id = lv_part6.
+* If line count is 5
+  ELSEIF lv_col_count EQ 5.
+* Join text from varaibles containning Action and User ID
+    CONCATENATE lv_part3 lv_part4 lv_part5 INTO lv_approved_by SEPARATED BY space.
+* Set the value of user id in a local varaible to be used to get the name of user from master record
+    lv_user_id = lv_part5.
+  ENDIF.
+* <<< End of Addition : CRQ26290 - DSDK942706 by C9000286 >>>
+
+  "Specifies that the 2nd part of the string is date
+  IF lv_part2 CA '.'.
+    CONCATENATE lv_part1 lv_part2
+    INTO lv_status_date SEPARATED BY space.
+* Check for the correct role of the approver incase of reject reapproval
+* If the approve by user id and Role is not avaialble then only allow to map the value
+    IF ( lv_col_count NE 4 AND lv_col_count NE 5 ).
+      lv_partner_type = lv_part3.
+    ENDIF.
+    CONDENSE:  lv_status_date,lv_partner_type.
+    "Specifies that the 2nd part of the string is partner type
+  ELSE.
+    lv_status_date  = lv_part1.
+    lv_partner_type = lv_part2.
+    CONDENSE:  lv_status_date,lv_partner_type.
+  ENDIF.
+
+*Addiing the columns
+*Status & Date
+  CONCATENATE '<td>' '<p><code>'
+              lv_status_date '</p></code>' '</td>'
+         INTO lv_text1.
+  PERFORM fill_lines1 USING lv_text1.
+  CLEAR: lv_text1.
+
+*Partnet Type
+  IF lv_partner_type IS NOT INITIAL.
+    CONCATENATE '<td width="10%">' '<p><code>'
+                lv_partner_type '</p></code>' '</td>'
+           INTO lv_text1.
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+  ELSE.
+    lv_text1 =  '<td width="10%">&nbsp;</td>'.
+
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+  ENDIF.
+
+* <<< Begin of Addition : CRQ26290 - DSDK942706 by C9000286 >>>
+*Approve by
+* Check if approved by text was filled
+  IF lv_approved_by IS NOT INITIAL.
+
+* Call a subroutine to get the user name from master record
+    PERFORM get_user_name
+    USING lv_user_id
+    CHANGING lv_user_name.
+
+* Concatenate the user name with the uer id
+    CONCATENATE lv_approved_by ' (' lv_user_name ')'
+    INTO lv_approved_by.
+
+* Creat Table column to display approve by text
+    CONCATENATE '<td width="40%">' '<p><code>'
+                lv_approved_by '</p></code>' '</td>'
+           INTO lv_text1.
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+  ELSE.
+* If Approve by text is not filled then creat table column with no value for formatting purpose
+    lv_text1 =  '<td width="40%">&nbsp;</td>'.
+    PERFORM fill_lines1 USING lv_text1.
+    CLEAR: lv_text1.
+  ENDIF.
+* <<< End of Addition : CRQ26290 - DSDK942706 by C9000286 >>>
+
+  CLEAR: lv_status_date,lv_partner_type,
+         lv_part1,lv_part2,lv_part3,
+         lv_part4,lv_part5,lv_part6,
+         lv_approved_by , lv_col_count,
+         lv_user_id.
+
+ENDFORM.                    " GET_STATUS_DATE_PARTNER
+*&---------------------------------------------------------------------*
+*&      Form  GET_STRINGS
+*&---------------------------------------------------------------------*
+*  This perform is used to determins User Ids, Name and Postion
+* in case of user ids not starting with "C90" or "DUB"
+*----------------------------------------------------------------------*
+
+FORM get_strings  USING    p_tdline TYPE any
+                           p_str1
+                           p_str2
+                           p_userid
+                           p_username.
+
+  DATA: lt_split  TYPE tt_split,
+        lwa_split TYPE ty_split.
+
+  DATA:  lv_id_flag    TYPE c,
+         lv_name_flag  TYPE c,
+         lv_name_textc TYPE c LENGTH 80.
+
+
+
+  REFRESH : lt_split.
+  CLEAR   : lwa_split.
+
+  SPLIT p_tdline AT ' ' INTO TABLE lt_split.
+  DELETE lt_split WHERE texts EQ  ' '.
+
+  LOOP AT lt_split INTO lwa_split.
+
+    IF sy-tabix > 1.
+      CLEAR lv_name_textc.
+      SELECT SINGLE name_textc FROM user_addr
+      INTO lv_name_textc
+      WHERE bname EQ lwa_split-texts.
+      IF sy-subrc EQ 0 . " Suggests this is a user id
+*        CONCATENATE lwa_split-texts lv_name_textc
+*                       INTO p_str2 SEPARATED BY space.
+        p_userid = lwa_split-texts.
+        p_username = lv_name_textc.
+        CLEAR p_str2.
+        lv_id_flag = 'X'.
+        EXIT.  "" Exit Loop when user id & user name found
+      ENDIF.
+    ENDIF.
+
+    IF  lv_id_flag NE 'X'." Until User ID not found
+      CONCATENATE p_str1 lwa_split-texts
+      INTO p_str1 SEPARATED BY space.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM.                    " GET_STRINGS
+
+
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_PAYROLL_AREA_LOCK
+*&---------------------------------------------------------------------*
+*  Check whether the payroll area is locked for payroll processing
+*  If yes, return error message and do not action on work item
+*----------------------------------------------------------------------*
+*  No interface parameters need to be passed to this subroutine
+*----------------------------------------------------------------------*
+FORM check_payroll_area_lock.
+
+  DATA: lv_pakey     TYPE pakey.
+  DATA: lv_t569v     TYPE t569v.
+  DATA: lv_pa0001    TYPE pa0001.
+  DATA: lwa_wi_container TYPE swcont,
+        lit_wi_container TYPE STANDARD TABLE OF swcont INITIAL SIZE 0.
+
+* Read containers values for the work item to get the employee number
+  CALL FUNCTION 'SWW_WI_CONTAINER_READ'
+    EXPORTING
+      wi_id                    = wa_swwwihead-wi_id
+    TABLES
+      wi_container             = lit_wi_container
+    EXCEPTIONS
+      container_does_not_exist = 1
+      read_failed              = 2
+      OTHERS                   = 3.
+  IF sy-subrc <> 0.
+*   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ELSE.
+    READ TABLE lit_wi_container INTO lwa_wi_container
+                            WITH KEY element = ' EMPLOYEET'.
+    IF sy-subrc EQ 0.
+      lv_pakey-pernr = lwa_wi_container+20(8).  " emp no is frm 8char
+*     Get Payroll Area of Employee.
+      SELECT SINGLE *
+        FROM pa0001
+        INTO lv_pa0001
+       WHERE pernr EQ lv_pakey-pernr
+         AND endda GE sy-datum
+         AND begda LE sy-datum.
+      IF sy-subrc EQ 0.
+*       Check Control record
+        SELECT SINGLE *
+          FROM t569v
+          INTO lv_t569v
+         WHERE abkrs EQ lv_pa0001-abkrs.
+        IF lv_t569v-state NE '3' AND
+           lv_t569v-state NE '2' AND
+           lv_t569v-state NE '0' .
+*         Raise Message
+          gv_retcode = 8.
+        ENDIF.
+      ENDIF.
+*  Commented By Avinash Req to Uncomment once Rec Transports are moved
+** >> Begin of modification for Leave approval via mobile during
+**    payroll lock. CRQ105543  Transport# DSDK947083 C90000248
+*    ELSE.
+*      READ TABLE lit_wi_container INTO lwa_wi_container
+*                              WITH KEY element = 'EMPLOYEET'.
+*      IF sy-subrc EQ 0.
+*        lv_pakey-pernr = lwa_wi_container+20(8).  " emp no is frm 8char
+**     Get Payroll Area of Employee.
+*        SELECT SINGLE *
+*          FROM pa0001
+*          INTO lv_pa0001
+*         WHERE pernr EQ lv_pakey-pernr
+*           AND endda GE sy-datum
+*           AND begda LE sy-datum.
+*        IF sy-subrc EQ 0.
+**       Check Control record
+*          SELECT SINGLE *
+*            FROM t569v
+*            INTO lv_t569v
+*           WHERE abkrs EQ lv_pa0001-abkrs.
+*          IF lv_t569v-state NE '3' AND
+*             lv_t569v-state NE '2' AND
+*             lv_t569v-state NE '0' .
+**         Raise Message
+*            gv_retcode = 8.
+*          ENDIF.
+*        ENDIF.
+*      ENDIF.
+** << End of modification for Leave approval via mobile during
+**    payroll lock. CRQ105543  Transport# DSDK947083 C90000248
+* End Commented By Avinash Req to Uncomment once Rec Transports are moved
+
+    ENDIF.
+  ENDIF.
+
+ENDFORM.                    " CHECK_PAYROLL_AREA_LOCK
+*&---------------------------------------------------------------------*
+*&      Form  GET_USER_NAME
+*&---------------------------------------------------------------------*
+*  Subroutine to get user name from master records
+*----------------------------------------------------------------------*
+FORM get_user_name  USING    p_id
+                    CHANGING p_name.
+
+  DATA :
+        lv_user_info  TYPE addr3_val.
+
+  CALL FUNCTION 'SUSR_USER_ADDRESS_READ'
+    EXPORTING
+      user_name              = p_id
+    IMPORTING
+      user_address           = lv_user_info
+    EXCEPTIONS
+      user_address_not_found = 1
+      OTHERS                 = 2.
+  IF sy-subrc <> 0.
+  ENDIF.
+
+  IF lv_user_info-name_text IS NOT INITIAL.
+    p_name = lv_user_info-name_text.
+  ENDIF.
+
+  CLEAR lv_user_info.
+ENDFORM.                    " GET_USER_NAME
+*     Begin of Add DSDK967318 CRQ121365
+*&---------------------------------------------------------------------*
+*&      Form  RELEASE_PR
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM release_pr .
+
+  DATA:  lv_bnfpo         TYPE bnfpo,
+         lv_banfn         TYPE banfn,
+         lv_relcode       TYPE rm06b-form1,
+         e_return         TYPE char1,
+         e_message        TYPE text120,
+         lwa_wi_container TYPE swcont,
+         lit_wi_container TYPE STANDARD TABLE OF swcont INITIAL SIZE 0.
+
+* Read containers values for the work item to get the employee number
+  CALL FUNCTION 'SWW_WI_CONTAINER_READ'
+    EXPORTING
+      wi_id                    = gv_wiid
+    TABLES
+      wi_container             = lit_wi_container
+    EXCEPTIONS
+      container_does_not_exist = 1
+      read_failed              = 2
+      OTHERS                   = 3.
+  IF sy-subrc <> 0.
+*   MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ELSE.
+*   PR Number
+    READ TABLE lit_wi_container INTO lwa_wi_container
+                        WITH KEY element = 'BANFN'.
+    IF sy-subrc EQ 0.
+      lv_banfn = lwa_wi_container-value.
+    ENDIF.
+
+*   PR Item
+    READ TABLE lit_wi_container INTO lwa_wi_container
+                        WITH KEY element = 'BNFPO'.
+    IF sy-subrc EQ 0.
+      lv_bnfpo    = lwa_wi_container-value.
+    ENDIF.
+
+*   Release Code
+    READ TABLE lit_wi_container INTO lwa_wi_container
+                        WITH KEY element = 'RELCODE'.
+    IF sy-subrc EQ 0.
+      lv_relcode = lwa_wi_container-value.
+    ENDIF.
+
+    IF lv_banfn IS NOT INITIAL AND lv_bnfpo IS NOT INITIAL AND lv_relcode IS NOT INITIAL.
+*     "Modification related to CRQ129173
+*     " In Case of lock, Capture the whole message to check whether PR Item is
+*     "enquest or not
+*     "CHeck Lock
+      CALL FUNCTION 'ENQUEUE_EMEBANE'
+        EXPORTING
+          banfn          = lv_banfn
+          bnfpo          = lv_bnfpo
+        EXCEPTIONS
+          foreign_lock   = 1
+          system_failure = 2
+          OTHERS         = 3.
+      IF sy-subrc <> 0.
+*       "Implement suitable error handling here
+        TRY.
+            MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                    WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4
+                    INTO wa_message_lines-line.
+
+            gv_retcode = '81'.
+            wa_message_lines-msg_type = 'E'.
+          CATCH cx_root.
+            gv_retcode = '81'.
+            wa_message_lines-msg_type = 'E'.
+            wa_message_lines-line = 'Error occured while locking the object'.
+        ENDTRY.
+*        MESSAGE s000(26) WITH e_message INTO wa_message_lines-line.
+      ELSE.
+        CALL FUNCTION 'DEQUEUE_EMEBANE'
+          EXPORTING
+            banfn = lv_banfn
+            bnfpo = lv_bnfpo.
+*     "Modification end CRQ129173
+
+        CALL FUNCTION 'ZMM_PR_RELEASE_BAPI'
+          EXPORTING
+            i_banfn              = lv_banfn
+            i_bnfpo              = lv_bnfpo
+            i_relcode            = lv_relcode
+          IMPORTING
+            e_return             = e_return
+            e_message            = e_message
+          EXCEPTIONS
+            authority_check_fail = 1
+            enqueue_fail         = 2
+            OTHERS               = 3.
+        IF e_return EQ 'X'.
+          gv_retcode = '81'.
+          wa_message_lines-msg_type = 'E'.
+          MESSAGE s000(26) WITH e_message INTO wa_message_lines-line.
+        ENDIF.
+      ENDIF.
+    ELSE.
+      gv_retcode = '80'.
+      wa_message_lines-msg_type = 'E'.
+      wa_message_lines-line = |Data missing { lv_banfn } { lv_bnfpo } { lv_relcode }|.
+    ENDIF.
+  ENDIF.
+ENDFORM.
+*     ENd of Add DSDK967318 CRQ121365
+
+* Start of change DSDK967826:CRQ118763
+*&---------------------------------------------------------------------*
+*& Form  SUB_POP_ATTACHMENT
+*&---------------------------------------------------------------------*
+*  Populate attachment
+*----------------------------------------------------------------------*
+*  -->PV_REF_TASK     Task Number
+*  -->P_LREF_DOCUMENT Mail document reference
+*----------------------------------------------------------------------*
+FORM sub_pop_attachment USING pv_ref_task
+                              p_lref_document TYPE REF TO cl_document_bcs.
+  DATA: lt_attachment TYPE zhr_leave_doc_content_tt,
+        ls_pakey      TYPE pakey,
+        lt_contents   TYPE swftlisti1,
+        lt_simp_cont  TYPE STANDARD TABLE OF swr_cont,
+        lv_doc_type   TYPE so_obj_tp,
+        lv_file_size  TYPE so_obj_len.
+
+  IF pv_ref_task EQ 'TS90000443' OR pv_ref_task EQ 'TS90001338'.   "Mail comm during leave approval
+    "'TS90000841': For cancela leave.
+*   Get WF container for leave details
+    CALL FUNCTION 'SAP_WAPI_READ_CONTAINER'
+      EXPORTING
+        workitem_id      = gv_top_wi_id
+      TABLES
+        simple_container = lt_simp_cont.
+*   Get Key for HR Master Data
+    READ TABLE lt_simp_cont INTO DATA(ls_simp_cont)
+    WITH KEY element = 'ABSENCE'.
+    IF sy-subrc EQ 0.
+      "soc by c90005600 for wfh
+      IF pv_ref_task EQ 'TS90001338'.
+        READ TABLE lt_simp_cont INTO DATA(ls_index)
+        WITH KEY element = 'INDEX'.
+        IF ls_index-value = '1'.
+          ls_pakey = ls_simp_cont-value+20(34).
+*     Clear followinf fields as those are not required for attachment retrieval
+          CLEAR: ls_pakey-objps, ls_pakey-sprps, ls_pakey-seqnr.
+          CALL FUNCTION 'ZHR_GET_LEAVE_ATTACHMENT'
+            EXPORTING
+              im_pakey     = ls_pakey
+            IMPORTING
+              ev_doc_type  = lv_doc_type
+              et_content   = lt_attachment
+              ev_file_size = lv_file_size.
+        ENDIF.
+      ELSE.
+     ls_pakey = ls_simp_cont-value+20(34).
+*     Clear followinf fields as those are not required for attachment retrieval
+        CLEAR: ls_pakey-objps, ls_pakey-sprps, ls_pakey-seqnr.
+        CALL FUNCTION 'ZHR_GET_LEAVE_ATTACHMENT'
+          EXPORTING
+            im_pakey     = ls_pakey
+          IMPORTING
+            ev_doc_type  = lv_doc_type
+            et_content   = lt_attachment
+            ev_file_size = lv_file_size.
+      ENDIF.
+      IF lt_attachment[] IS NOT INITIAL.
+*       Populate attachment in mail content
+        LOOP AT lt_attachment INTO DATA(ls_attachment).
+          TRY.
+              p_lref_document->add_attachment(
+              EXPORTING
+                i_attachment_type    = ls_attachment-doc_type
+                i_attachment_subject = ls_attachment-doc_name
+                i_att_content_hex    = ls_attachment-content ).
+            CATCH cx_document_bcs.
+          ENDTRY.
+        ENDLOOP.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+ENDFORM.
+* End of change DSDK967826:CRQ118763
+*&---------------------------------------------------------------------*
+*&      Form  GET_HR_BL_DESC
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM get_hr_bl_desc USING i_wiid TYPE sww_wiid.
+
+  DATA:
+    lv_wiid              TYPE sww_wiid,
+    lcl_workitem_context TYPE REF TO cl_swf_run_workitem_context,
+    lcl_oref             TYPE REF TO cx_root,
+    lv_text              TYPE string,
+    lcl_wi_cnt           TYPE REF TO cl_swf_cnt_container,
+    lif_wi_cnt           TYPE REF TO if_swf_ifs_parameter_container,
+    liv_wi_conv          TYPE REF TO if_swf_cnt_conversion,
+    lt_cont_vals         TYPE swconttab,
+    lt_cont_defs         TYPE swbconttab.
+
+  CHECK i_wiid IS NOT INITIAL.
+  SELECT SINGLE top_wi_id
+    INTO lv_wiid
+    FROM swwwihead
+  WHERE wi_id = i_wiid.
+  CHECK sy-subrc EQ 0.
+
+  TRY.
+      CALL METHOD cl_swf_run_workitem_context=>get_instance
+        EXPORTING
+          im_wiid     = lv_wiid
+        RECEIVING
+          re_instance = lcl_workitem_context.
+
+    CATCH cx_swf_run_wim INTO lcl_oref.
+      lv_text = lcl_oref->get_text( ).
+  ENDTRY.
+
+  CALL METHOD lcl_workitem_context->if_wapi_workitem_context~get_wi_container
+    RECEIVING
+      re_container = lif_wi_cnt.
+
+  lcl_wi_cnt ?= lif_wi_cnt.
+
+  TRY.
+      CALL METHOD lcl_wi_cnt->if_swf_cnt_conversion~to_bor_container
+        EXPORTING
+          tunnel_non_bor_handles = 'X'
+          convert_bor_handles    = 'X'
+          convert_to_runtime     = 'X'
+        IMPORTING
+          values                 = lt_cont_vals
+          definition             = lt_cont_defs.
+
+      swc0_get_element lt_cont_vals 'OBJECTKEY' wa_key.
+    CATCH cx_swf_cnt_element INTO lcl_oref.
+      lv_text = lcl_oref->get_text( ).
+  ENDTRY.
+
+  IF wa_key-subty(2) = 'BL' or
+     wa_key-subty(4) = 'WR13'. "C90005867
+    MOVE-CORRESPONDING wa_key TO wa_pskey.
+    wa_pskey-infty = '2001'.
+    CALL FUNCTION 'HRWPC_RFC_IT0XXX_TEXT_GET'
+      EXPORTING
+        pskey         = wa_pskey
+      TABLES
+        infotype_text = it_text.
+  ENDIF.
+ENDFORM.
