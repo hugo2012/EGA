@@ -1,0 +1,84 @@
+FUNCTION zwf_sendmail_approval.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     VALUE(WIDETAILS) TYPE  ZWI_DTLS
+*"     VALUE(REF_TASK) TYPE  SWWWIHEAD-WI_RH_TASK DEFAULT 'TS90000417'
+*"     VALUE(I_SUBJ) TYPE  STRING OPTIONAL
+*"  EXPORTING
+*"     VALUE(RETURN) TYPE  EKKO-LOEKZ
+*"  TABLES
+*"      APPROVERS STRUCTURE  ZMM_PO_AGENT
+*"----------------------------------------------------------------------
+* Change History:                                                      *
+* ---------------                                                      *
+* Ver    Date      UserID     TransportNo     Description              *
+* 1.0  07.02.2010 C90000248    DSDK932685     Initial Development      *
+* 2.0  08.09.2014 C90000286    DSDK942706     Approver column addition *
+*                                             CRQ26290
+* 3.0  07.04.2020 C90004210    DSDK976366     CRQ122651:E0008
+*-- Clear work variables
+  PERFORM clear_pomail_variables.
+* Move values into global variables
+  it_poagents[] = approvers[].
+* Get the workitem ID for the decision work item
+  PERFORM identify_substitutes.
+* Delete the duplicate user id
+  SORT it_poagents BY userid.
+  DELETE ADJACENT DUPLICATES FROM it_poagents COMPARING userid.
+* Fill the email id's for approver's user id
+  CALL FUNCTION 'ZMM_GET_APPROVER_EMAIL'
+    TABLES
+      approvers = it_poagents.
+* Get
+  wa_wi_dtls    = widetails.
+
+*-- Pull text from Task to buld the Email message
+  PERFORM get_task_texts USING widetails-wi_id
+                               ref_task
+                               it_task_texts
+                               it_lines.
+* Begin Change CHG1365 16.05.2023
+  IF ref_task = 'TS90000443' OR ref_task = 'TS90001338'.
+    PERFORM get_hr_bl_desc USING widetails-wi_id.
+  ENDIF.
+* End Change CHG1365 16.05.2023
+* Perform the conversion of lines into columns so as to get the formatting
+  PERFORM convert_tlines USING ref_task.
+*  BOC by C90005600 for CHG0009876
+  IF wa_key-subty NE 'MT00' AND  wa_key-subty NE 'PL00' AND  wa_key-subty NE 'CL01' AND
+          wa_key-subty NE 'CL02' AND  wa_key-subty NE 'MT00' AND  wa_key-subty NE 'PL00' AND
+          wa_key-subty NE 'CL01' AND  wa_key-subty NE 'CL02' AND  wa_key-subty NE 'SC02' AND
+          wa_key-subty NE 'BR00' AND  wa_key-subty NE 'HJ00' AND  wa_key-subty NE 'SC03' AND
+          wa_key-subty NE 'SL00' AND  wa_key-subty NE 'VL00' AND  wa_key-subty NE 'VL01' AND
+         ( wa_key-subty NOT BETWEEN 'SK00' AND 'SK14' ) AND
+           ( wa_key-subty NOT BETWEEN 'SK16' AND 'SK18' ).
+    DELETE it_buttons WHERE name = 'Send Back'.
+  ENDIF.
+  SELECT SINGLE * FROM zhr_leave_send  "only for testing
+             INTO @DATA(ls_data)
+             WHERE pernr = @wa_key-pernr
+             AND  nbegda = @wa_key-begda
+             AND  nendda = @wa_key-endda
+             AND  nsubty = @wa_key-subty.
+  IF sy-subrc = 0. "leave record is onetime send back by Approver and record is recreated from ESS by employee
+*       "Remove sendback option
+    DELETE it_buttons WHERE name = 'Send Back'.
+  ENDIF.
+*    EOC by C90005600 for CHG0009876
+  DELETE it_buttons WHERE name IS INITIAL.
+  LOOP AT it_poagents INTO wa_poagents.
+*-- Generate the Random Number for the Security Code and Store the Info
+*   into Database for cross verification later while approving
+    PERFORM generate_and_store_seccode4wi.
+    CHECK gv_flag EQ 'X'.
+*-- Frame the Body of the Email
+    PERFORM build_mail_body USING ref_task.
+*-- Send Mail
+    PERFORM send_mail USING ref_task.
+    CLEAR: wa_poagents, wa_contents, wa_zswwwiauth, gv_flag, gv_seccode.
+    REFRESH: it_contents.
+  ENDLOOP.
+  return = gv_success.
+
+ENDFUNCTION.
