@@ -1,0 +1,119 @@
+FUNCTION zppm_fm_wf_studies_cost_calc.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     REFERENCE(IV_ITEM_GUID) TYPE  /RPM/TV_GUID
+*"     REFERENCE(IV_DECISION_ID) TYPE  RPM_TV_EXTID
+*"  EXPORTING
+*"     REFERENCE(EV_STUDY_COST) TYPE  /RPM/TV_CURR_AMOUNT
+*"----------------------------------------------------------------------
+
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*29.01.2026  DSDK9A07KC   #CHG0029188   Log Issue E457
+*                                          The logic is used for doing
+*                                          Studied cost calculation.
+*
+*
+*---------------------------------------------------------------------
+
+TYPES: lty_r_finview TYPE RANGE OF /rpm/tv_fin_view,
+       lty_r_groupid TYPE RANGE OF rpm_tv_extid,
+       lty_r_categoryid TYPE RANGE OF /rpm/tv_cap_catg.
+
+
+DATA: lr_finview TYPE lty_r_finview,
+      lr_groupid TYPE lty_r_groupid,
+      lr_categoryid TYPE lty_r_categoryid.
+
+DATA: lv_presfeas_opex_est TYPE /rpm/v_fin_plan-amount,
+      lv_feas_opex_est TYPE /rpm/v_fin_plan-amount,
+      lv_presfeas_capex_est TYPE /rpm/v_fin_plan-amount,
+      lv_feas_capex_est TYPE /rpm/v_fin_plan-amount.
+
+ IF iv_decision_id = 'ZDP01'.
+* Gate 1 calcualtion
+    lr_finview =  VALUE #( ( sign   = 'I' option = 'EQ'   low    = 50 )
+                      ).
+
+    lr_groupid =  VALUE #( ( sign   = 'I' option = 'EQ'   low    = 'ZFG00' )
+                       ( sign   = 'I' option = 'EQ'   low    = 'ZFG01' )
+                       ( sign   = 'I' option = 'EQ'   low    = 'ZFG02' )
+                       ( sign   = 'I' option = 'EQ'   low    = 'ZFG03' )
+                      ).
+    lr_categoryid =  VALUE #( ( sign   = 'I' option = 'EQ'   low    = 'ZFC08' )
+                       ( sign   = 'I' option = 'EQ'   low    = 'ZFC09' )
+                      ).
+
+ ELSEIF iv_decision_id = 'ZDP02'.
+* Gate 2 calcualtion
+  lr_finview =  VALUE #( ( sign   = 'I' option = 'EQ'   low    = 52 )
+                         ( sign   = 'I' option = 'EQ'   low    = 60 )
+                        ).
+  lr_groupid  =  VALUE #( ( sign   = 'I' option = 'EQ'   low    = 'ZFG01' )
+                         ( sign   = 'I' option = 'EQ'   low    = 'ZFG02' )
+                         ( sign   = 'I' option = 'EQ'   low    = 'ZFG03' )
+                        ).
+  lr_categoryid =  VALUE #( ( sign   = 'I' option = 'EQ'   low    = 'ZFC08' )
+                         ( sign   = 'I' option = 'EQ'   low    = 'ZFC09' )
+                         ( sign   = 'I' option = 'EQ'   low    = 'ZFC22' )
+                        ).
+
+ ENDIF.
+
+  lv_presfeas_opex_est = 0.
+  lv_feas_opex_est = 0.
+  lv_presfeas_capex_est = 0.
+  lv_feas_capex_est  = 0.
+
+ SELECT group_id,category_id,plan_type,period, amount, currency
+      FROM /rpm/v_fin_plan INTO TABLE @DATA(lt_fin_plan)
+          WHERE item_d_guid = @iv_item_guid
+            AND group_id    IN @lr_groupid
+            AND category_id IN @lr_categoryid
+            AND plan_type   IN @lr_finview.
+
+ IF sy-subrc IS INITIAL.
+    IF iv_decision_id = 'ZDP01'.
+
+      LOOP AT lt_fin_plan ASSIGNING FIELD-SYMBOL(<lfs_fin_plan>).
+        IF ( <lfs_fin_plan>-category_id = 'ZFC08' AND <lfs_fin_plan>-group_id = 'ZFG02' ) .
+          lv_presfeas_opex_est  = lv_presfeas_opex_est + <lfs_fin_plan>-amount.
+        ENDIF.
+        IF ( <lfs_fin_plan>-category_id = 'ZFC08' AND <lfs_fin_plan>-group_id = 'ZFG03' ) .
+           lv_feas_opex_est  = lv_feas_opex_est + <lfs_fin_plan>-amount.
+        ENDIF.
+        IF ( <lfs_fin_plan>-category_id = 'ZFC09' AND <lfs_fin_plan>-group_id = 'ZFG00' ) .
+          lv_presfeas_capex_est  =  lv_presfeas_capex_est + <lfs_fin_plan>-amount.
+        ENDIF.
+        IF ( <lfs_fin_plan>-category_id = 'ZFC09' AND <lfs_fin_plan>-group_id = 'ZFG01' ) .
+         lv_feas_capex_est  =  lv_feas_capex_est + <lfs_fin_plan>-amount.
+        ENDIF.
+      ENDLOOP.
+    ELSEIF iv_decision_id = 'ZDP02'.
+
+      LOOP AT lt_fin_plan ASSIGNING <lfs_fin_plan>.
+        IF ( <lfs_fin_plan>-plan_type = '52' AND  <lfs_fin_plan>-category_id = 'ZFC22' AND <lfs_fin_plan>-group_id = 'ZFG01' ) .
+          lv_presfeas_opex_est  = lv_presfeas_opex_est + <lfs_fin_plan>-amount.
+        ENDIF.
+        IF ( <lfs_fin_plan>-plan_type = '52' AND <lfs_fin_plan>-category_id = 'ZFC22' AND <lfs_fin_plan>-group_id = 'ZFG02' ) .
+          lv_presfeas_capex_est  =  lv_presfeas_capex_est + <lfs_fin_plan>-amount.
+        ENDIF.
+        IF ( <lfs_fin_plan>-plan_type = '60' AND  <lfs_fin_plan>-category_id = 'ZFC08' AND <lfs_fin_plan>-group_id = 'ZFG03' ) .
+           lv_feas_opex_est  = lv_feas_opex_est + <lfs_fin_plan>-amount.
+        ENDIF.
+        IF ( <lfs_fin_plan>-plan_type = '60' AND <lfs_fin_plan>-category_id = 'ZFC09' AND <lfs_fin_plan>-group_id = 'ZFG01' ) .
+         lv_feas_capex_est  =  lv_feas_capex_est + <lfs_fin_plan>-amount.
+        ENDIF.
+      ENDLOOP.
+
+    ENDIF.
+ ENDIF.
+
+ ev_study_cost = lv_presfeas_opex_est + lv_feas_opex_est + lv_presfeas_capex_est + lv_feas_capex_est.
+ENDFUNCTION.
