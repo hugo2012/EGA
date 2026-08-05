@@ -1,0 +1,60 @@
+FUNCTION zppm_fm_get_wftype_catgory.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     VALUE(IV_ZCATEGORY) TYPE  ZDE_CATEGORY
+*"     VALUE(IS_ATTRIBUTES) TYPE  /RPM/TS_ITEM_D_API
+*"  EXPORTING
+*"     REFERENCE(EV_ZZWFTYPE) TYPE  ZZDE_WFTYPE
+*"  TABLES
+*"      ET_MSG STRUCTURE  /RPM/TS_MESSAGES OPTIONAL
+*"----------------------------------------------------------------------
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*29.01.2026  #DSDK9A07KC   #CHG0029188   Log Issue E457
+*                                           DoA Update new Logic to
+*                                           get workflow type
+*
+*---------------------------------------------------------------------
+
+  CHECK is_attributes IS NOT INITIAL.
+  CHECK iv_zcategory IS NOT INITIAL.
+
+  IF iv_zcategory = zcl_ppm_workflow=>gc_zcategory_default."'DEFAULT'. "EXISTING OP/MT Logic
+    SELECT SINGLE * FROM zppm035 INTO @DATA(ls_035) "#EC "#EC CI_NOFIRST
+                             WHERE zzmteam = @is_attributes-zzmteam
+                             AND  area = @is_attributes-geography
+                             AND  zzplanst  = @is_attributes-zzplanst.
+    CHECK sy-subrc IS INITIAL.
+    ev_zzwftype = COND #( WHEN ls_035-zzwftype IS NOT INITIAL THEN ls_035-zzwftype ELSE '' ).
+    RETURN.
+  ELSE.
+    " for rule precedence R3, R5, R4, Default
+    "* R3 - Annual - Priority 1
+    "*R5 - Study phase - Priority 2
+    "* R4 - Value Bucket - Priority 3
+    " Default - Priority 4
+    SELECT  * FROM zppm035 INTO TABLE @DATA(lt_035)
+                             WHERE ( zcategory = @iv_zcategory  OR zcategory = '' )
+                              AND  ( zzmteam = @is_attributes-zzmteam OR zzmteam = '' )
+                              AND  ( area = @is_attributes-geography OR area = '' )
+                              AND  ( zzplanst  = @is_attributes-zzplanst OR zzplanst = '' ).
+   CHECK sy-subrc IS INITIAL.
+
+   SORT lt_035 BY zcategory  DESCENDING
+                  zzmteam    DESCENDING
+                  area       DESCENDING
+                  zzplanst   DESCENDING.
+   ls_035 = lt_035[ 1 ].
+   ev_zzwftype = COND #( WHEN ls_035-zzwftype IS NOT INITIAL THEN ls_035-zzwftype ELSE '' ).
+   EXIT.
+
+  ENDIF.
+
+
+ENDFUNCTION."#EC CI_VALPAR
