@@ -1,0 +1,81 @@
+FUNCTION zppm_fm_wf_determine_catgory.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     VALUE(IV_ZBUCKET_PARENT) TYPE  /RPM/TV_EXTID
+*"     VALUE(IV_ZZCOMCAT) TYPE  ZCOMPONENTISATION_CATEGORY
+*"     VALUE(IV_PHASE_ID) TYPE  RPM_TV_EXTID
+*"     VALUE(IV_ZCEP_VALUE) TYPE  /RPM/TV_CURR_AMOUNT
+*"     VALUE(IV_STUDY_COST) TYPE  /RPM/TV_CURR_AMOUNT
+*"     VALUE(IV_ZPLANED) TYPE  ZPLAN_STATUS
+*"  EXPORTING
+*"     REFERENCE(EV_ZCATEGORY) TYPE  ZDE_CATEGORY
+*"  TABLES
+*"      ET_MSG STRUCTURE  /RPM/TS_MESSAGES
+*"----------------------------------------------------------------------
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*29.01.2026  DSDK9A07KC   CRQ#CHG0029188   Log Issue E457
+*                                           Update new Logic to
+*                                          DoA list for approval to
+*                                          get Category based on rule precedence
+*                                          R3(Priority 1) - > R5(Priority 2) -> R4(Priority 3)
+*
+*---------------------------------------------------------------------
+
+* RULE PRECEDENCE : R3 -> R4 -> R5 -> Default. - Original
+*New  RULE PRECEDENCE : R5 -> R3 -> R4 ->  Default. - updated by Thomas
+* Active rule precedence : R3(Priority 1) - > R5(Priority 2) -> R4(Priority 3) - > Default. Updated by Steve follow FDS V2.4
+
+* R3 - Annual - Priority 1
+* Bucket ID = 10 = Sustaining
+*updated V2.5 : Added plan status check, CEP >=threshold
+* iv_zplaned = '01' : Planned
+* iv_zplaned = '03' : N/A
+  IF iv_zbucket_parent = '10' AND ( iv_zzcomcat = 'Potlining' OR iv_zzcomcat = 'Periodic Overhaul' ).
+   IF ( iv_phase_id = 'ZDP01' OR iv_phase_id = 'ZDP02' OR iv_phase_id = 'ZDP03')
+     AND iv_zcep_value >= zcl_ppm_workflow=>gc_cep_maximum_r3_value "new condition - CEP >= 10000000.
+     AND ( iv_zplaned = '01' OR iv_zplaned = '03' ). "V2.5: - include Plan Status in ('01', '03')
+     ev_zcategory = zcl_ppm_workflow=>gc_zcategory_annual."'ANNUAL'.
+     RETURN.
+   ENDIF.
+  ENDIF.
+
+* R5 - Study phase - Priority 2
+* Study phase < thresold -> STUDY
+  IF iv_phase_id = 'ZDP01' OR iv_phase_id = 'ZDP02'.
+* Planned/ N/A, CEP>= $15M and studies cost < $5M
+* V2.5 : includes N/A status(03)   - treated same as Planned
+    IF ( iv_zplaned = '01' OR iv_zplaned = '03' )
+      AND iv_zcep_value >= zcl_ppm_workflow=>gc_cep_minimum_planned " CEP >= 15000000
+      AND iv_study_cost <   zcl_ppm_workflow=>gc_studies_maximum_planned. "Study Cost < 5000000
+      ev_zcategory = zcl_ppm_workflow=>gc_zcategory_study."'STUDY'
+      RETURN.
+    ELSEIF  iv_zplaned = '02'
+* Unplanned : CEP >= $5M and studies cost < $3M
+      AND iv_zcep_value >= zcl_ppm_workflow=>gc_cep_minimum_unplanned " CEP >= 5000000
+      AND  iv_study_cost <   zcl_ppm_workflow=>gc_studies_maximum_unplanned. "Study Cost < 3000000
+       ev_zcategory = zcl_ppm_workflow=>gc_zcategory_study."'STUDY'
+      RETURN.
+    ENDIF.
+
+  ENDIF.
+
+* R4 - Value Bucket - Priority 3
+* CEP  >= $25M + Planned/ N/A-> VALUE
+* Bucket ID = 20 = VALUE
+  IF iv_zbucket_parent = '20'
+    AND iv_zcep_value >= zcl_ppm_workflow=>gc_cep_maximum_r4_planned " V2.5:  changed from > to >=
+    AND ( iv_zplaned = '01' OR iv_zplaned = '03' ). " V2.5: include 03
+     ev_zcategory = zcl_ppm_workflow=>gc_zcategory_value. "'VALUE'.
+     RETURN.
+  ENDIF.
+
+* Default - No special rule applies - Priority 4
+  ev_zcategory = zcl_ppm_workflow=>gc_zcategory_default."'DEFAULT'.
+ENDFUNCTION.
