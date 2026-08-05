@@ -1,0 +1,847 @@
+class ZCL_PPM_CUSTOM_FLD_UTILITY definition
+  public
+  create public .
+
+public section.
+
+  data:
+    IT_OBJ_CUS_FLD type table of /rpm/obj_cus_fld .
+
+  class-methods FETCH_APPLICANT_DES
+    importing
+      !I_ASTNR type PS_ASTNR
+      !I_LAISO type LAISO
+    exporting
+      !E_DESC type STRING .
+  class-methods FETCH_DESCRIPTIONS
+    importing
+      !I_ITEM_ATT type /RPM/TS_ITEM_D_UI
+      !I_FIELD_NAME type FIELDNAME
+      !I_SPRAS type LAISO
+      !I_FIRST_TIME type WDY_BOOLEAN
+    exporting
+      !E_DESC type STRING
+      !E_ID type STRING .
+  class-methods FETCH_FUNCLOCCATION_DES
+    importing
+      !I_TPLNR type TPLNR
+      !I_LAISO type LAISO
+    exporting
+      !E_DESC type STRING .
+  class-methods FETCH_IMAGE_SRC
+    importing
+      !I_ITEM_ATT type /RPM/TS_ITEM_D_UI
+      !I_FIELD_NAME type FIELDNAME
+    returning
+      value(R_SOURCE) type STRING .
+  class-methods FETCH_SPONS_DES
+    importing
+      !I_PERNR type PERSNO
+      !I_LAISO type LAISO
+    exporting
+      !E_DESC type STRING .
+  class-methods FETCH_COSTCENTRE_DESC
+    importing
+      value(I_LAISO) type LAISO
+      value(I_KOSTL) type KOSTL
+    exporting
+      !E_LTEXT type STRING .
+  class-methods FETCH_NAME
+    importing
+      !I_VERNR type PS_VERNR
+    exporting
+      !E_VERNA type PS_VERNA .
+  class-methods FETCH_ASSETCLASS_DES
+    importing
+      value(I_LAISO) type LAISO
+      value(I_ANLKL) type ANLKL
+    exporting
+      !E_DESC type TXT20_ANKT .
+  class-methods FETCH_USEFULL_LIFE
+    importing
+      value(I_ANLKL) type ANLKL
+    exporting
+      !E_NDJAR type NDJAR .
+  methods ADD_DESCRIPTIONS
+    importing
+      !I_VIEW type ref to IF_WD_VIEW
+      !I_FIRST_TIME type WDY_BOOLEAN
+      value(I_ITEM_ATT) type /RPM/TS_ITEM_D_UI
+      value(I_SPRAS) type LAISO .
+  class-methods FETCH_ICON
+    importing
+      !I_VALUE type ZOVERALL_STATUS
+    returning
+      value(R_ICON) type STRING .
+protected section.
+private section.
+
+  class-methods ADD_TEXTVIEW
+    importing
+      !I_ID type STRING
+      !I_TEXT type STRING
+      !I_CONT_NAME type STRING
+      !I_VIEW type ref to IF_WD_VIEW .
+ENDCLASS.
+
+
+
+CLASS ZCL_PPM_CUSTOM_FLD_UTILITY IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_CUSTOM_FLD_UTILITY->ADD_DESCRIPTIONS
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_VIEW                         TYPE REF TO IF_WD_VIEW
+* | [--->] I_FIRST_TIME                   TYPE        WDY_BOOLEAN
+* | [--->] I_ITEM_ATT                     TYPE        /RPM/TS_ITEM_D_UI
+* | [--->] I_SPRAS                        TYPE        LAISO
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD add_descriptions.
+
+*to determine which fields need the description added we check in the configuration that is there in SPRO.
+* from the table /RPM/OBJ_CUS_FLD  only for those fields for which the service ID has been maintained as
+*000000000000009 the description as a text view will be populated.
+
+*then we check if the transparent container exist in the view for the z fields,
+*we do this by checking if ZZXXXX_Container is available in the ROOTUIELEMENTCONTAINER or not.
+*if the container is found then we add the the tex view to that container.
+*and populate the text views dynamically
+
+    DATA: lr_element TYPE REF TO if_wd_view_element.
+    DATA: lr_transp_cont TYPE REF TO cl_wd_transparent_container,
+          lr_textview    TYPE REF TO cl_wd_text_view,
+          lt_stat_flds   TYPE STANDARD TABLE OF /rpm/obj_cus_fld.
+
+    DATA: lv_ktext TYPE string,
+          lv_id    TYPE string.
+* fetch the configuration for the views
+
+    SELECT * FROM /rpm/obj_cus_fld INTO TABLE @DATA(lt_obj_cus_fld)
+      WHERE service_id = '000000000000009'.
+    IF sy-subrc NE 0.
+      CLEAR lt_obj_cus_fld.
+    ENDIF.
+
+*now loop at the config
+*and check if the explicit search help fields are present in the present View'
+
+    lt_stat_flds = VALUE #(   ( field_name = 'ZZSTATUS')
+                              ( field_name = 'ZZSCHSTA')
+                              ( field_name = 'ZZCSTAT') ).
+    IF  i_first_time EQ 'X'.
+      LOOP AT lt_obj_cus_fld INTO DATA(ls_obj_cus_fld).
+        CONCATENATE ls_obj_cus_fld-field_name '_CONTAINER' INTO DATA(lv_cont_name).
+        CONCATENATE ls_obj_cus_fld-field_name '_TEXT' INTO lv_id.
+
+        CALL METHOD zcl_ppm_custom_fld_utility=>fetch_descriptions
+          EXPORTING
+            i_item_att   = i_item_att
+            i_field_name = ls_obj_cus_fld-field_name
+            i_spras      = i_spras
+            i_first_time = i_first_time
+          IMPORTING
+            e_desc       = lv_ktext
+            e_id         = lv_id.
+
+        CALL METHOD zcl_ppm_custom_fld_utility=>add_textview
+          EXPORTING
+            i_id        = lv_id
+            i_text      = lv_ktext
+            i_cont_name = lv_cont_name
+            i_view      = i_view.
+
+
+      ENDLOOP.
+
+
+
+      LOOP AT lt_stat_flds INTO DATA(ls_stat_fld).
+*   get the contaier details
+        CLEAR lr_element.
+
+        CONCATENATE ls_stat_fld-field_name '_CONTAINER' INTO lv_cont_name.
+        CONCATENATE ls_stat_fld-field_name '_ICON' INTO lv_id.
+
+        CALL METHOD i_view->get_element
+          EXPORTING
+            id      = lv_cont_name
+          RECEIVING
+            element = lr_element.
+* cast to transparent Container
+        CLEAR lr_transp_cont.
+
+        lr_transp_cont ?= lr_element. "cast to transparent container class
+
+* fetch the image Source
+        CALL METHOD zcl_ppm_custom_fld_utility=>fetch_image_src
+          EXPORTING
+            i_item_att   = i_item_att
+            i_field_name = ls_stat_fld-field_name
+          RECEIVING
+            r_source     = DATA(lv_source).
+
+        DATA(lr_img) = cl_wd_image=>new_image( id = lv_id source = lv_source  ).
+
+        cl_wd_flow_data=>new_flow_data( element = lr_img ). " Fill layout data
+        CALL METHOD lr_img->set_v_align
+          EXPORTING
+            value = '02'.
+
+        IF lr_transp_cont IS BOUND.
+* add to transparent Container for the Field.
+          lr_transp_cont->add_child( lr_img ) .
+          IF ls_stat_fld-field_name EQ 'ZZSCHSTA'.
+* Fetch the long description of the schedule status field and add after the traffic light
+
+            DATA(lv_patt) = i_item_att-zzschsta(1)  && '%'.
+
+            SELECT SINGLE zzstatxt FROM zppm017 INTO @DATA(lv_statxt)
+              WHERE zzschsta LIKE @lv_patt.
+            IF sy-subrc IS INITIAL.
+
+              CONCATENATE ls_stat_fld-field_name '_TEXT' INTO lv_id.
+
+              IF i_item_att-zzschsta IS INITIAL.
+                CLEAR lv_ktext.
+              ELSE.
+                lv_ktext = |->| && lv_statxt.
+              ENDIF.
+              CALL METHOD zcl_ppm_custom_fld_utility=>add_textview
+                EXPORTING
+                  i_id        = lv_id
+                  i_text      = lv_ktext
+                  i_cont_name = lv_cont_name
+                  i_view      = i_view.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+        CLEAR: lr_transp_cont, lr_img, lr_element.
+
+      ENDLOOP.
+
+    ELSE.
+*        just update the Texts based on the Context values.
+
+      LOOP AT lt_obj_cus_fld INTO ls_obj_cus_fld.
+
+        CONCATENATE ls_obj_cus_fld-field_name '_TEXT' INTO lv_id.
+
+        CALL METHOD zcl_ppm_custom_fld_utility=>fetch_descriptions
+          EXPORTING
+            i_item_att   = i_item_att
+            i_field_name = ls_obj_cus_fld-field_name
+            i_spras      = i_spras
+            i_first_time = i_first_time
+          IMPORTING
+            e_desc       = lv_ktext
+            e_id         = lv_id.
+
+        CALL METHOD i_view->get_element
+          EXPORTING
+            id      = lv_id
+          RECEIVING
+            element = lr_element.
+
+        IF lr_element IS NOT INITIAL.
+
+          lr_textview ?= lr_element.
+
+          CALL METHOD lr_textview->set_text
+            EXPORTING
+              value = lv_ktext.
+          .
+        ENDIF.
+        CLEAR: lr_element, lr_textview, lv_id, lv_ktext.
+
+      ENDLOOP.
+
+* update the icons for the status fields.
+      LOOP AT lt_stat_flds INTO ls_stat_fld.
+
+*   get the image details
+        CLEAR lv_id.
+        CONCATENATE ls_stat_fld-field_name '_ICON' INTO lv_id.
+
+        CLEAR lr_element.
+
+        CALL METHOD i_view->get_element
+          EXPORTING
+            id      = lv_id
+          RECEIVING
+            element = lr_element.
+
+*cast to Image element
+        CLEAR lr_img.
+
+        lr_img ?= lr_element.
+
+        CLEAR lv_source.
+
+        CALL METHOD zcl_ppm_custom_fld_utility=>fetch_image_src
+          EXPORTING
+            i_item_att   = i_item_att
+            i_field_name = ls_stat_fld-field_name
+          RECEIVING
+            r_source     = lv_source.
+
+        IF lv_source IS NOT INITIAL.
+**begin of: Log issue 445 - commented to prevent dump error when lr_img is initial
+*          CALL METHOD lr_img->set_source
+*            EXPORTING
+*              value = lv_source.
+***** added check lr_img before call lr_img->set_source
+          IF lr_img IS NOT INITIAL.
+           CALL METHOD lr_img->set_source
+            EXPORTING
+              value = lv_source.
+          ENDIF.
+**End of: Log issue 445 - commented to prevent dump error when lr_img is initial
+        ENDIF.
+        IF ls_stat_fld-field_name EQ 'ZZSCHSTA'.
+* Fetch the long description of the schedule status field and add after the traffic light
+
+          lv_patt = i_item_att-zzschsta(1)  && '%'.
+
+          SELECT SINGLE zzstatxt FROM zppm017 INTO @lv_statxt
+            WHERE zzschsta LIKE @lv_patt.
+          IF sy-subrc IS INITIAL.
+
+            CONCATENATE ls_stat_fld-field_name '_TEXT' INTO lv_id.
+
+            IF i_item_att-zzschsta IS INITIAL.
+              CLEAR lv_ktext.
+            ELSE.
+              lv_ktext = |->| && lv_statxt.
+            ENDIF.
+            CALL METHOD i_view->get_element
+              EXPORTING
+                id      = lv_id
+              RECEIVING
+                element = lr_element.
+
+            IF lr_element IS NOT INITIAL.
+
+              lr_textview ?= lr_element.
+
+              CALL METHOD lr_textview->set_text
+                EXPORTING
+                  value = lv_ktext.
+              .
+            ENDIF.
+            CLEAR: lr_element, lr_textview, lv_id, lv_ktext.
+          ENDIF.
+        ENDIF.
+
+      ENDLOOP.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Private Method ZCL_PPM_CUSTOM_FLD_UTILITY=>ADD_TEXTVIEW
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_ID                           TYPE        STRING
+* | [--->] I_TEXT                         TYPE        STRING
+* | [--->] I_CONT_NAME                    TYPE        STRING
+* | [--->] I_VIEW                         TYPE REF TO IF_WD_VIEW
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD add_textview.
+    DATA: lr_transp_cont TYPE REF TO cl_wd_transparent_container.
+
+    CALL METHOD i_view->get_element
+      EXPORTING
+        id      = i_cont_name
+      RECEIVING
+        element = DATA(lr_element).
+
+    IF lr_element IS NOT INITIAL.
+
+      DATA(lr_textview) = cl_wd_text_view=>new_text_view( view = i_view id = i_id text = i_text ).
+
+      lr_transp_cont ?= lr_element. "cast to transparent container class
+
+      cl_wd_flow_data=>new_flow_data( element = lr_textview ). " Fill layout data
+
+      lr_transp_cont->add_child( lr_textview ). "add to the container
+
+    ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_CUSTOM_FLD_UTILITY=>FETCH_APPLICANT_DES
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_ASTNR                        TYPE        PS_ASTNR
+* | [--->] I_LAISO                        TYPE        LAISO
+* | [<---] E_DESC                         TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD fetch_applicant_des.
+    DATA: lv_lang  TYPE laiso,
+          lv_ktext TYPE string,
+          lv_spras TYPE spras.
+
+
+    CALL FUNCTION 'LANGUAGE_CODE_ISO_TO_SAP'
+      EXPORTING
+        iso_code  = i_laiso
+      IMPORTING
+        sap_code  = lv_spras
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+*fetch the cost Center Description.
+    IF lv_spras IS INITIAL." If master language is initial fill the system language.
+      lv_spras = sy-langu.
+    ENDIF.
+
+    SELECT SINGLE astna FROM tcj05 INTO @DATA(lv_astna)
+      WHERE astnr = @i_astnr.
+    IF sy-subrc IS INITIAL.
+      e_desc = lv_astna.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_CUSTOM_FLD_UTILITY=>FETCH_ASSETCLASS_DES
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_LAISO                        TYPE        LAISO
+* | [--->] I_ANLKL                        TYPE        ANLKL
+* | [<---] E_DESC                         TYPE        TXT20_ANKT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD fetch_assetclass_des.
+    DATA: lv_spras TYPE spras,
+          lv_txk20 TYPE txt20_ankt.
+
+    CALL FUNCTION 'LANGUAGE_CODE_ISO_TO_SAP'
+      EXPORTING
+        iso_code  = i_laiso
+      IMPORTING
+        sap_code  = lv_spras
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+    IF sy-subrc IS INITIAL.
+
+      IF lv_spras IS INITIAL.
+        lv_spras = sy-langu.
+      ENDIF.
+      SELECT SINGLE txk20 FROM ankt
+        INTO lv_txk20
+        WHERE
+            spras = lv_spras
+        AND anlkl = i_anlkl.
+      IF sy-subrc IS INITIAL.
+        e_desc = lv_txk20.
+      ENDIF.
+    ENDIF.
+
+
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_CUSTOM_FLD_UTILITY=>FETCH_COSTCENTRE_DESC
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_LAISO                        TYPE        LAISO
+* | [--->] I_KOSTL                        TYPE        KOSTL
+* | [<---] E_LTEXT                        TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD fetch_costcentre_desc.
+    DATA: lv_lang  TYPE laiso,
+          lv_ktext TYPE string,
+          lv_spras TYPE spras.
+
+
+    CALL FUNCTION 'LANGUAGE_CODE_ISO_TO_SAP'
+      EXPORTING
+        iso_code  = i_laiso
+      IMPORTING
+        sap_code  = lv_spras
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+
+*fetch the cost Center Description.
+    IF lv_spras IS INITIAL." If master language is initial fill the system language.
+      lv_spras = sy-langu.
+    ENDIF.
+
+*using select single becasue it is the same controlling area thorughout EGA 1000.
+    SELECT SINGLE ktext FROM cskt
+      INTO lv_ktext
+      WHERE
+          spras = lv_spras " we are using the master language from the context of PPM
+      AND kostl = i_kostl.
+
+    IF sy-subrc IS INITIAL.
+      e_ltext = lv_ktext.
+    ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_CUSTOM_FLD_UTILITY=>FETCH_DESCRIPTIONS
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_ITEM_ATT                     TYPE        /RPM/TS_ITEM_D_UI
+* | [--->] I_FIELD_NAME                   TYPE        FIELDNAME
+* | [--->] I_SPRAS                        TYPE        LAISO
+* | [--->] I_FIRST_TIME                   TYPE        WDY_BOOLEAN
+* | [<---] E_DESC                         TYPE        STRING
+* | [<---] E_ID                           TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD fetch_descriptions.
+    DATA: lv_ktext TYPE string,
+          lv_id    TYPE string,
+          lv_user  TYPE xubname,
+          lv_ndjar TYPE ndjar.
+
+    CASE i_field_name.
+      WHEN 'ZZAKSTL' .
+
+        IF i_item_att-zzakstl IS NOT INITIAL  OR i_first_time EQ abap_true.
+          CALL METHOD zcl_ppm_custom_fld_utility=>fetch_costcentre_desc
+            EXPORTING
+              i_laiso = i_spras
+              i_kostl = i_item_att-zzakstl
+            IMPORTING
+              e_ltext = DATA(lv_kostt).
+          CONCATENATE i_field_name '_TEXT' INTO lv_id.
+          lv_ktext = lv_kostt.
+        ENDIF.
+
+      WHEN 'ZZFKSTL' .
+        IF i_item_att-zzfkstl IS NOT INITIAL OR i_first_time EQ abap_true.
+          CLEAR lv_kostt.
+          CALL METHOD zcl_ppm_custom_fld_utility=>fetch_costcentre_desc
+            EXPORTING
+              i_laiso = i_spras
+              i_kostl = i_item_att-zzfkstl
+            IMPORTING
+              e_ltext = lv_kostt.
+
+          CONCATENATE i_field_name '_TEXT' INTO lv_id.
+          lv_ktext = lv_kostt.
+        ENDIF.
+      WHEN 'ZZPROLEAD'.
+        IF i_item_att-zzprolead IS NOT INITIAL OR i_first_time EQ abap_true.
+          CALL METHOD zcl_ppm_custom_fld_utility=>fetch_name
+            EXPORTING
+              i_vernr = i_item_att-zzprolead
+            IMPORTING
+              e_verna = DATA(lv_name).
+
+          CONCATENATE i_field_name '_TEXT' INTO lv_id.
+          lv_ktext = lv_name.
+        ENDIF.
+      WHEN 'ZZCLASS'.
+        IF i_item_att-zzclass IS NOT INITIAL OR i_first_time EQ abap_true.
+          CALL METHOD zcl_ppm_custom_fld_utility=>fetch_assetclass_des
+            EXPORTING
+              i_laiso = i_spras
+              i_anlkl = i_item_att-zzclass
+            IMPORTING
+              e_desc  = DATA(lv_classdesc).
+
+          CONCATENATE i_field_name '_TEXT' INTO lv_id.
+          lv_ktext = lv_classdesc.
+        ENDIF.
+
+      WHEN 'ZZTPLNR'.
+        IF i_item_att-zztplnr IS NOT INITIAL OR i_first_time EQ abap_true.
+          CALL METHOD zcl_ppm_custom_fld_utility=>fetch_funcloccation_des
+            EXPORTING
+              i_laiso = i_spras
+              i_tplnr = i_item_att-zztplnr
+            IMPORTING
+              e_desc  = DATA(lv_floc_desc).
+
+          CONCATENATE i_field_name '_TEXT' INTO lv_id.
+          lv_ktext = lv_floc_desc.
+        ENDIF.
+      WHEN 'ZZASTNR'.
+        IF i_item_att-zzastnr IS NOT INITIAL OR i_first_time EQ abap_true.
+          CALL METHOD zcl_ppm_custom_fld_utility=>fetch_applicant_des
+            EXPORTING
+              i_laiso = i_spras
+              i_astnr = i_item_att-zzastnr
+            IMPORTING
+              e_desc  = DATA(lv_applic_desc).
+          CONCATENATE i_field_name '_TEXT' INTO lv_id.
+          lv_ktext = lv_applic_desc.
+        ENDIF.
+      WHEN 'ZZSPONS' .
+        IF i_item_att-zzspons IS NOT INITIAL OR i_first_time EQ abap_true.
+
+
+          CALL METHOD zcl_ppm_custom_fld_utility=>fetch_spons_des
+            EXPORTING
+              i_laiso = i_spras
+              i_pernr = i_item_att-zzspons
+            IMPORTING
+              e_desc  = DATA(lv_spons_desc).
+
+          CONCATENATE i_field_name '_TEXT' INTO lv_id.
+          lv_ktext = lv_spons_desc.
+
+        ENDIF.
+      WHEN 'ZZREQUESTOR'.
+        IF i_item_att-zzrequestor IS NOT INITIAL OR i_first_time EQ abap_true.
+          CALL METHOD zcl_ppm_custom_fld_utility=>fetch_spons_des
+            EXPORTING
+              i_laiso = i_spras
+              i_pernr = i_item_att-zzrequestor
+            IMPORTING
+              e_desc  = lv_spons_desc.
+
+          CONCATENATE i_field_name '_TEXT' INTO lv_id.
+          lv_ktext = lv_spons_desc.
+        ENDIF.
+
+      WHEN 'ZZINITIATOR'.
+        IF i_item_att-zzinitiator IS NOT INITIAL OR i_first_time EQ abap_true.
+          CALL METHOD zcl_ppm_custom_fld_utility=>fetch_spons_des
+            EXPORTING
+              i_laiso = i_spras
+              i_pernr = i_item_att-zzinitiator
+            IMPORTING
+              e_desc  = lv_spons_desc.
+
+          CONCATENATE i_field_name '_TEXT' INTO lv_id.
+          lv_ktext = lv_spons_desc.
+        ENDIF.
+      WHEN 'ZZAAROVALWITH'.
+        IF i_item_att-zzaarovalwith IS NOT INITIAL OR i_first_time EQ abap_true.
+          lv_user = i_item_att-zzaarovalwith.
+          IF lv_user IS NOT INITIAL.
+
+            DATA(lv_userinfo) = zcl_ppm_ui_services=>get_user_info( lv_user ).
+            CONCATENATE i_field_name '_TEXT' INTO lv_id.
+            lv_ktext = lv_userinfo-name.
+          ENDIF.
+        ENDIF.
+      WHEN 'ZZVBUKR'.
+        IF i_item_att-zzvbukr IS NOT INITIAL OR i_first_time EQ abap_true.
+          DATA(lv_bukrs) = i_item_att-zzvbukr.
+          IF lv_bukrs IS NOT INITIAL.
+            SELECT SINGLE butxt FROM t001 INTO lv_ktext
+                                WHERE bukrs = lv_bukrs.
+            CONCATENATE i_field_name '_TEXT' INTO lv_id.
+          ENDIF.
+        ENDIF.
+      WHEN OTHERS.
+    ENDCASE.
+    e_id = lv_id.
+    e_desc = lv_ktext.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_CUSTOM_FLD_UTILITY=>FETCH_FUNCLOCCATION_DES
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_TPLNR                        TYPE        TPLNR
+* | [--->] I_LAISO                        TYPE        LAISO
+* | [<---] E_DESC                         TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD fetch_funcloccation_des.
+    DATA: lv_lang  TYPE laiso,
+          lv_ktext TYPE string,
+          lv_spras TYPE spras.
+
+
+    CALL FUNCTION 'LANGUAGE_CODE_ISO_TO_SAP'
+      EXPORTING
+        iso_code  = i_laiso
+      IMPORTING
+        sap_code  = lv_spras
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+*fetch the cost Center Description.
+    IF lv_spras IS INITIAL." If master language is initial fill the system language.
+      lv_spras = sy-langu.
+    ENDIF.
+
+    SELECT SINGLE pltxt FROM iflotx INTO @DATA(lv_pltxt)
+      WHERE tplnr = @i_tplnr
+      AND   spras = @lv_spras.
+    IF sy-subrc IS INITIAL.
+      e_desc = lv_pltxt.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_CUSTOM_FLD_UTILITY=>FETCH_ICON
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_VALUE                        TYPE        ZOVERALL_STATUS
+* | [<-()] R_ICON                         TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method FETCH_ICON.
+    CASE i_VALUE.
+            WHEN '@08@'.
+              R_ICON = 'ICON_GREEN_LIGHT'.
+            WHEN '@09@'.
+              R_ICON = 'ICON_YELLOW_LIGHT'.
+            WHEN '@0A@'.
+              R_ICON = 'ICON_RED_LIGHT'.
+            WHEN OTHERS.
+          ENDCASE.
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_CUSTOM_FLD_UTILITY=>FETCH_IMAGE_SRC
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_ITEM_ATT                     TYPE        /RPM/TS_ITEM_D_UI
+* | [--->] I_FIELD_NAME                   TYPE        FIELDNAME
+* | [<-()] R_SOURCE                       TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD fetch_image_src.
+
+*  case ls_stat_fld-field_name
+    CASE i_field_name .
+      WHEN 'ZZSTATUS'.
+        IF i_item_att-zzstatus IS NOT INITIAL.
+          DATA(lv_stat) = i_item_att-zzstatus.
+          CALL METHOD zcl_ppm_custom_fld_utility=>fetch_icon
+            EXPORTING
+              i_value = lv_stat
+            RECEIVING
+              r_icon  = r_source.
+        ENDIF.
+      WHEN 'ZZSCHSTA'.
+        CLEAR r_source.
+        IF i_item_att-zzschsta IS NOT INITIAL.
+          CLEAR lv_stat.
+          lv_stat = i_item_att-zzschsta.
+          CASE i_item_att-zzschsta(1).
+            WHEN '3'.
+              r_source = 'ICON_GREEN_LIGHT'.
+            WHEN '2'.
+              r_source = 'ICON_YELLOW_LIGHT'.
+            WHEN '1'.
+              r_source = 'ICON_RED_LIGHT'.
+            WHEN OTHERS.
+          ENDCASE.
+        ENDIF.
+      WHEN 'ZZCSTAT'.
+        CLEAR r_source.
+        IF i_item_att-zzcstat IS NOT INITIAL.
+          CLEAR lv_stat.
+          lv_stat = i_item_att-zzcstat.
+          CALL METHOD zcl_ppm_custom_fld_utility=>fetch_icon
+            EXPORTING
+              i_value = lv_stat
+            RECEIVING
+              r_icon  = r_source.
+        ENDIF.
+      WHEN OTHERS.
+    ENDCASE.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_CUSTOM_FLD_UTILITY=>FETCH_NAME
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_VERNR                        TYPE        PS_VERNR
+* | [<---] E_VERNA                        TYPE        PS_VERNA
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD fetch_name.
+    DATA: lv_verna TYPE ps_verna.
+
+    SELECT SINGLE verna FROM tcj04
+      INTO lv_verna
+      WHERE
+       vernr = i_vernr.
+    IF sy-subrc IS INITIAL.
+      e_verna = lv_verna.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_CUSTOM_FLD_UTILITY=>FETCH_SPONS_DES
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_PERNR                        TYPE        PERSNO
+* | [--->] I_LAISO                        TYPE        LAISO
+* | [<---] E_DESC                         TYPE        STRING
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD fetch_spons_des.
+    DATA: lv_lang  TYPE laiso,
+          lv_ktext TYPE string,
+          lv_spras TYPE spras.
+
+
+    CALL FUNCTION 'LANGUAGE_CODE_ISO_TO_SAP'
+      EXPORTING
+        iso_code  = i_laiso
+      IMPORTING
+        sap_code  = lv_spras
+      EXCEPTIONS
+        not_found = 1
+        OTHERS    = 2.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+*fetch the cost Center Description.
+    IF lv_spras IS INITIAL." If master language is initial fill the system language.
+      lv_spras = sy-langu.
+    ENDIF.
+
+    SELECT  single ename FROM pa0001 INTO  @DATA(lv_ename)
+      WHERE pernr =  @i_pernr
+      AND   begda LE @sy-datum
+      AND   endda GE @sy-datum.
+    IF sy-subrc IS INITIAL.
+      e_desc = lv_ename.
+    ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_CUSTOM_FLD_UTILITY=>FETCH_USEFULL_LIFE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_ANLKL                        TYPE        ANLKL
+* | [<---] E_NDJAR                        TYPE        NDJAR
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD fetch_usefull_life.
+    DATA: lv_spras TYPE spras,
+          lv_ndjar TYPE ankb-ndjar.
+
+    IF lv_spras IS INITIAL.
+      lv_spras = sy-langu.
+    ENDIF.
+    SELECT SINGLE ndjar FROM ankb
+      INTO lv_ndjar
+      WHERE
+          bdatu >= sy-datum
+      AND anlkl = i_anlkl.
+    IF sy-subrc IS INITIAL.
+      e_ndjar = lv_ndjar.
+    ENDIF.
+
+
+
+
+  ENDMETHOD.
+ENDCLASS.
