@@ -1,0 +1,449 @@
+class ZCL_PPM_DP_WF_APPROVAL definition
+  public
+  final
+  create public . "check.
+
+public section.
+
+  interfaces BI_OBJECT .
+  interfaces BI_PERSISTENT .
+  interfaces IF_WORKFLOW .
+
+  class-data STATUSOBJNUMBER type ONR00-OBJNR .
+  class-data STATUSOBJTYPE type TJ03-OBTYP .
+  class-data STATUSPROFILE type JSTO-STSMA .
+  class-data OBJECTTYPE type TOJTB .
+  class-data EXTERNALNUMBER type RPM_TS_PROJECT_INT-EXTERNAL_ID .
+  class-data TXT50 type IMAKT-TXT50 .
+  class-data COMP_CODE_DESCR type T001-BUTXT .
+  class-data COMPANY_CODE type T001-BUKRS .
+  class-data CREATEDDATE type IMAK-ERDAT .
+
+  methods CONSTRUCTOR
+    importing
+      !I_QMNUM type QMNUM optional .
+  class-methods GET_APPROVER_LIST
+    importing
+      !I_WBS type PRPS-PSPHI
+      !I_LONGTEXT type TLINE_T
+      !I_PLANNINGVALUES type ZPPM_PLANNING_VALUES_TT
+    exporting
+      !E_AGENTS type RHOBJECTS-OBJECT
+      !E_WFAPPROVALS type ZPPM_APPROVAL_TT
+      !E_RESPONSIBLEPERSON type ZPPM_APPROVAL_TT
+      !E_APPLICANT type ZPPM_APPROVAL_TT
+      !E_INTRESTEDPARTY type ZPPM_APPROVAL_TT
+      !E_APPLICANTMAIL type ZPPM_EMAIL_TT
+    changing
+      !CT_MAILTEXT type ZPPM_DP_MAIL_STRUCT_TT
+      !CT_APPMAILTEXT type SWFTLISTI1 .
+  class-methods GET_EMAIL_ID
+    importing
+      !I_CURRENTAGENT type WFSYST-ACT_AGENT optional
+      !I_WORKITEMCREATIONDATE type SWWWIHEAD-WI_CD
+      !I_WORKITEMCREATIONTIME type SWWWIHEAD-WI_CT
+      !I_RESPONSIBLEPERSON type ZEHS_TT_RHOBJECTS
+      !I_EMAILTASK type ZUTL_MOB_SWITCH-OBJID
+    exporting
+      !E_EMAIL type ZPPM_EMAIL
+      !E_ENDDATE type SY-DATUM
+      !E_ENDTIME type SY-UZEIT
+      !E_AGENTNAME type ADRP-NAME_TEXT
+      !E_AD_EMAIL type ZPPM_EMAIL .
+  class-methods STATUS_CHANGE
+    importing
+      !I_TRANSACTION type TJ01-VRGNG optional .
+  class-methods GET_URL_LINK
+    importing
+      value(IV_DECISION_GUID) type /RPM/TV_GUID
+      !WORKITEM_ID type SWW_WIID
+      !ET_ATTACHMENTS type TSWOTOBJID
+    exporting
+      !ET_OUT_DATA type /BCV/FND_STRING
+      !ET_ATTACHMENTS_AUTO type TSWOTOBJID .
+protected section. "check
+private section.
+
+  data IM_LPOR type SIBFLPOR ."check
+ENDCLASS.
+
+
+
+CLASS ZCL_PPM_DP_WF_APPROVAL IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_DP_WF_APPROVAL->BI_OBJECT~DEFAULT_ATTRIBUTE_VALUE
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] RESULT                         TYPE REF TO DATA
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method BI_OBJECT~DEFAULT_ATTRIBUTE_VALUE.
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_DP_WF_APPROVAL->BI_OBJECT~EXECUTE_DEFAULT_METHOD
+* +-------------------------------------------------------------------------------------------------+
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method BI_OBJECT~EXECUTE_DEFAULT_METHOD.
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_DP_WF_APPROVAL->BI_OBJECT~RELEASE
+* +-------------------------------------------------------------------------------------------------+
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method BI_OBJECT~RELEASE.
+
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_DP_WF_APPROVAL=>BI_PERSISTENT~FIND_BY_LPOR
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] LPOR                           TYPE        SIBFLPOR
+* | [<-()] RESULT                         TYPE REF TO BI_PERSISTENT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method BI_PERSISTENT~FIND_BY_LPOR.
+   DATA: lv_result TYPE REF TO zcl_ppm_dp_wf_approval.
+  DATA: lv_qmnum TYPE qmnum.
+  CHECK lpor-instid IS NOT INITIAL.
+  lv_qmnum = lpor-instid.
+  TRY.
+      CREATE OBJECT lv_result
+        EXPORTING
+          i_qmnum = lv_qmnum.
+    CATCH cx_bo_error .
+      EXIT.
+  ENDTRY.
+  result ?= lv_result.
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_DP_WF_APPROVAL->BI_PERSISTENT~LPOR
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] RESULT                         TYPE        SIBFLPOR
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method BI_PERSISTENT~LPOR.
+   DATA: lv_lpor TYPE sibflpor.
+
+  lv_lpor = me->im_lpor.
+
+  result-typeid = lv_lpor-typeid.
+  result-catid = lv_lpor-catid.
+  result-instid = lv_lpor-instid.
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_DP_WF_APPROVAL->BI_PERSISTENT~REFRESH
+* +-------------------------------------------------------------------------------------------------+
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method BI_PERSISTENT~REFRESH.
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_DP_WF_APPROVAL->CONSTRUCTOR
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_QMNUM                        TYPE        QMNUM(optional)
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method CONSTRUCTOR.
+
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_DP_WF_APPROVAL=>GET_APPROVER_LIST
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_WBS                          TYPE        PRPS-PSPHI
+* | [--->] I_LONGTEXT                     TYPE        TLINE_T
+* | [--->] I_PLANNINGVALUES               TYPE        ZPPM_PLANNING_VALUES_TT
+* | [<---] E_AGENTS                       TYPE        RHOBJECTS-OBJECT
+* | [<---] E_WFAPPROVALS                  TYPE        ZPPM_APPROVAL_TT
+* | [<---] E_RESPONSIBLEPERSON            TYPE        ZPPM_APPROVAL_TT
+* | [<---] E_APPLICANT                    TYPE        ZPPM_APPROVAL_TT
+* | [<---] E_INTRESTEDPARTY               TYPE        ZPPM_APPROVAL_TT
+* | [<---] E_APPLICANTMAIL                TYPE        ZPPM_EMAIL_TT
+* | [<-->] CT_MAILTEXT                    TYPE        ZPPM_DP_MAIL_STRUCT_TT
+* | [<-->] CT_APPMAILTEXT                 TYPE        SWFTLISTI1
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method GET_APPROVER_LIST.
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_DP_WF_APPROVAL=>GET_EMAIL_ID
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_CURRENTAGENT                 TYPE        WFSYST-ACT_AGENT(optional)
+* | [--->] I_WORKITEMCREATIONDATE         TYPE        SWWWIHEAD-WI_CD
+* | [--->] I_WORKITEMCREATIONTIME         TYPE        SWWWIHEAD-WI_CT
+* | [--->] I_RESPONSIBLEPERSON            TYPE        ZEHS_TT_RHOBJECTS
+* | [--->] I_EMAILTASK                    TYPE        ZUTL_MOB_SWITCH-OBJID
+* | [<---] E_EMAIL                        TYPE        ZPPM_EMAIL
+* | [<---] E_ENDDATE                      TYPE        SY-DATUM
+* | [<---] E_ENDTIME                      TYPE        SY-UZEIT
+* | [<---] E_AGENTNAME                    TYPE        ADRP-NAME_TEXT
+* | [<---] E_AD_EMAIL                     TYPE        ZPPM_EMAIL
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method GET_EMAIL_ID.
+
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_DP_WF_APPROVAL=>GET_URL_LINK
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_DECISION_GUID               TYPE        /RPM/TV_GUID
+* | [--->] WORKITEM_ID                    TYPE        SWW_WIID
+* | [--->] ET_ATTACHMENTS                 TYPE        TSWOTOBJID
+* | [<---] ET_OUT_DATA                    TYPE        /BCV/FND_STRING
+* | [<---] ET_ATTACHMENTS_AUTO            TYPE        TSWOTOBJID
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_url_link.
+
+    TYPES:BEGIN OF lty_doc.
+            INCLUDE TYPE /rpm/document.
+    TYPES    loio_id TYPE cff_phio-loio_id.
+    TYPES:END OF lty_doc.
+
+    TYPES:BEGIN OF lty_doc_loio.
+            INCLUDE TYPE scms_acinf.
+    TYPES    loio_id TYPE cff_phio-loio_id.
+    TYPES:END OF lty_doc_loio.
+
+    DATA lt_doc TYPE TABLE OF lty_doc.
+
+    DATA:    lt_access_info  TYPE TABLE OF scms_acinf,
+             lt_access_info_k  TYPE TABLE OF lty_doc_loio,
+             ls_msg          TYPE bapiret2,
+             lv_file_size    TYPE i,
+             lv_html_body TYPE string.
+
+    DATA:lv_doctype TYPE soodk-objtp.
+    DATA:l_act_filetype        TYPE char3.
+
+    DATA lo_previous_exception TYPE REF TO cx_root.
+
+    DATA: ls_document_data       TYPE sodocchgi1,
+          lt_object_content      TYPE TABLE OF solisti1,
+          ls_object_content_line LIKE LINE OF lt_object_content,
+          ls_note                TYPE sofmk,
+          ls_bo_return           TYPE swotreturn.
+
+    DATA:l_line_content       TYPE solisti1,
+         l_line_content_hex   TYPE solix,
+         l_document_data      TYPE sodocchgi1,
+         l_document_type      TYPE so_obj_tp,
+         l_document_info      TYPE sofolenti1.
+
+    DATA:l_trunc_length TYPE i,
+         lv_extension    TYPE hap_attachment_type.
+
+    DATA:lv_filename TYPE string,
+         lv_only_name TYPE string,
+         l_data_read TYPE i,
+         lv_xstring      TYPE xstring.
+
+    DATA:conv_class TYPE REF TO cl_abap_conv_in_ce,
+         off_class  TYPE REF TO cl_abap_view_offlen.
+
+    DATA lv_attach TYPE sibflporbt.
+
+    DATA: lv_wi_handle TYPE REF TO if_swf_run_wim_internal.
+    DATA: lh_workitem_context TYPE REF TO cl_swf_run_workitem_context.
+    DATA: ls_context TYPE sww_wimctx.
+    DATA: lh_txmgr TYPE REF TO cl_swf_run_transaction_manager.
+
+    DATA : lv_size          TYPE i,
+           lv_totalsize     TYPE i,
+           lt_content_bin   TYPE TABLE OF  sdokcntbin,
+           lv_doc_size      TYPE so_doc_siz.
+
+    FIELD-SYMBOLS: <ls_doc_file>    TYPE bapi_doc_files2,
+                   <ls_access_info> TYPE scms_acinf.
+
+     TRY.
+
+        CALL METHOD cl_swf_run_wim_factory=>find_by_wiid
+          EXPORTING
+            im_wiid             = workitem_id
+            im_context          = ls_context
+            im_read_for_update  = 'X'
+            im_tx               = lh_txmgr
+            im_wait_for_enqueue = ' '
+          RECEIVING
+            re_instance         = lv_wi_handle.
+
+
+        DATA(lv_workitem_context) = lv_wi_handle->get_workitem_context( ).
+
+        DATA(lv_container) = lv_workitem_context->get_wi_container( ).
+
+*        lv_container->get( EXPORTING name = 'ET_OUT_DATA' IMPORTING value = lv_cnt_html ).
+
+      CATCH cx_swf_cnt_container.
+      CATCH cx_swf_run_wim_enq_failed .
+      CATCH cx_swf_run_wim_read_failed .
+      CATCH cx_swf_run_wim.
+
+    ENDTRY.
+
+    SELECT *  FROM /rpm/document INTO CORRESPONDING FIELDS OF TABLE lt_doc
+                        WHERE entity_guid = iv_decision_guid. "- WF->DECISION_GUID GUID.
+
+    LOOP AT lt_doc ASSIGNING FIELD-SYMBOL(<ls>).
+      <ls>-loio_id = <ls>-edms_guid.
+    ENDLOOP.
+
+    CHECK lt_doc IS NOT INITIAL.
+
+    CLEAR: lt_access_info_k[],lt_access_info_k.
+
+    SELECT * FROM cff_phio INTO TABLE @DATA(lt_phio)    "#EC CI_GENBUFF
+                    FOR ALL ENTRIES IN @lt_doc
+                      WHERE loio_id = @lt_doc-loio_id.
+
+    CHECK lt_phio IS NOT INITIAL.
+
+* get decision details
+    SELECT SINGLE * FROM /rpm/decision INTO @DATA(ls_decs)
+                           WHERE guid = @iv_decision_guid.
+
+    CHECK sy-subrc IS INITIAL.
+
+*   get item details
+    SELECT SINGLE * FROM /rpm/item_d INTO @DATA(ls_item)
+                          WHERE guid = @ls_decs-item_guid.
+
+    CHECK sy-subrc IS INITIAL.
+
+  TRY.
+    CLEAR lv_totalsize.
+    LOOP AT lt_phio INTO DATA(ls_phio).
+
+      CLEAR:lt_access_info[], lt_content_bin,lv_xstring, lv_file_size,lv_size.
+
+      CALL FUNCTION 'SCMS_DOC_READ'
+        EXPORTING
+          stor_cat              = ls_phio-stor_cat
+          doc_id                = ls_phio-phio_id
+        TABLES
+          content_bin           = lt_content_bin
+          access_info           = lt_access_info
+        EXCEPTIONS
+          bad_storage_type      = 1
+          bad_request           = 2
+          unauthorized          = 3
+          comp_not_found        = 4
+          not_found             = 5
+          forbidden             = 6
+          conflict              = 7
+          internal_server_error = 8
+          error_http            = 9
+          error_signature       = 10
+          error_config          = 11
+          error_format          = 12
+          error_parameter       = 13
+          error                 = 14
+          OTHERS                = 15.
+      IF sy-subrc <> 0.
+      ELSE.
+
+        READ TABLE lt_access_info ASSIGNING <ls_access_info> INDEX 1.
+        IF <ls_access_info> IS NOT ASSIGNED.
+          CONTINUE.
+        ELSE.
+          lv_file_size = <ls_access_info>-comp_size.
+          CALL FUNCTION 'SCMS_BINARY_TO_XSTRING'
+            EXPORTING
+              input_length = lv_file_size
+            IMPORTING
+              buffer       = lv_xstring
+            TABLES
+              binary_tab   = lt_content_bin.
+           IF lv_xstring IS NOT INITIAL.
+              lv_doc_size = xstrlen( lv_xstring ).
+              CONDENSE lv_doc_size NO-GAPS.
+              lv_size = lv_doc_size.
+              lv_totalsize = lv_totalsize + lv_size.
+           ENDIF.
+      ENDIF.
+     ENDIF.
+     IF <ls_access_info>  IS ASSIGNED.
+       UNASSIGN <ls_access_info> .
+     ENDIF.
+   ENDLOOP.
+   DATA(lt_attachments) = et_attachments.
+   " convert byte to KB
+   lv_totalsize = lv_totalsize / 1000.
+* Reduce the size to 25 MB
+   IF lv_totalsize  > 25000.
+
+     CLEAR lt_attachments.
+     MESSAGE e057(zppm) INTO DATA(lv_message).
+     et_out_data = lv_message.
+     TRY.
+      lv_container->set(  name  = 'ET_OUT_DATA'       "#EC NOTEXT
+                  value = et_out_data ).
+     CATCH cx_swf_cnt_container INTO lo_previous_exception.
+     ENDTRY.
+     TRY.
+      lv_container->set(
+                            name  = '_Attach_Objects'       "#EC NOTEXT
+                            value = lt_attachments ).
+     CATCH cx_swf_cnt_container INTO lo_previous_exception.
+     ENDTRY.
+     TRY.
+      lv_container->set(
+                            name  = 'ET_ATTACHMENTS_AUTO'       "#EC NOTEXT
+                            value = lt_attachments ).
+     CATCH cx_swf_cnt_container INTO lo_previous_exception.
+     ENDTRY.
+     et_attachments_auto = lt_attachments.
+     CALL FUNCTION 'SWW_WI_LOG_FLUSH'.
+     lv_workitem_context->do_commit_work( ).
+   ELSE.
+      TRY.
+       TRY.
+         lv_container->set(
+                               name  = '_Attach_Objects'       "#EC NOTEXT
+                               value = lt_attachments ).
+        CATCH cx_swf_cnt_container INTO lo_previous_exception.
+        ENDTRY.
+
+      lv_container->set(
+                            name  = 'ET_ATTACHMENTS_AUTO'       "#EC NOTEXT
+                            value = lt_attachments ).
+     CATCH cx_swf_cnt_container INTO lo_previous_exception.
+     ENDTRY.
+     et_attachments_auto = lt_attachments.
+     CALL FUNCTION 'SWW_WI_LOG_FLUSH'.
+     lv_workitem_context->do_commit_work( ).
+   ENDIF.
+   CATCH cx_swf_cnt_container.
+   CATCH cx_swf_run_wim_enq_failed .
+   CATCH cx_swf_run_wim_read_failed .
+   CATCH cx_swf_run_wim.
+  CATCH /rpm/cx_api_message_buffer.
+  ENDTRY.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_DP_WF_APPROVAL=>STATUS_CHANGE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_TRANSACTION                  TYPE        TJ01-VRGNG(optional)
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method STATUS_CHANGE.
+
+
+  endmethod.
+ENDCLASS.
