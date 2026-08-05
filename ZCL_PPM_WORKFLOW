@@ -1,0 +1,611 @@
+class ZCL_PPM_WORKFLOW definition
+  public
+  final
+  create public . "check transport
+
+*"* public components of class ZCL_PPM_WORKFLOW
+*"* do not include other source files here!!!
+public section.
+
+  interfaces BI_OBJECT .
+  interfaces BI_PERSISTENT .
+  interfaces IF_WORKFLOW .
+
+  constants GC_CEP_MINIMUM_PLANNED type /RPM/TV_CURR_AMOUNT value 15000000 ##NO_TEXT.
+  constants GC_CEP_MINIMUM_UNPLANNED type /RPM/TV_CURR_AMOUNT value 5000000 ##NO_TEXT.
+  constants GC_STUDIES_MAXIMUM_PLANNED type /RPM/TV_CURR_AMOUNT value 5000000 ##NO_TEXT.
+  constants GC_STUDIES_MAXIMUM_UNPLANNED type /RPM/TV_CURR_AMOUNT value 3000000 ##NO_TEXT.
+  constants GC_CEP_MAXIMUM_R4_PLANNED type /RPM/TV_CURR_AMOUNT value 25000000 ##NO_TEXT.
+  constants GC_CEP_MAXIMUM_R3_VALUE type /RPM/TV_CURR_AMOUNT value 10000000 ##NO_TEXT.
+  constants GC_ZCATEGORY_STUDY type ZDE_CATEGORY value 'STUDY' ##NO_TEXT.
+  constants GC_ZCATEGORY_ANNUAL type ZDE_CATEGORY value 'ANNUAL' ##NO_TEXT.
+  constants GC_ZCATEGORY_VALUE type ZDE_CATEGORY value 'VALUE' ##NO_TEXT.
+  constants GC_ZCATEGORY_DEFAULT type ZDE_CATEGORY value 'DEFAULT' ##NO_TEXT.
+
+  class-methods GET_WF_RECIPIENT_LIST
+    importing
+      !OBJECT_TYPE type /RPM/OBJECT_TYPE
+      !PORTFOLIO_GUID type /RPM/TV_GUID
+      !PORTFL_ITEM_GUID type /RPM/TV_GUID
+      !WORKFLOW_ID type /RPM/TV_WF_ID
+    changing
+      !ACTOR_TAB type TSWHACTOR
+      !RECIPIENTS type /RPM/TT_WF_ACTORS .
+  class-methods CREATE_USER_EMAIL_LIST
+    importing
+      !IT_ACL type /RPM/TT_ACO_PERMISSIONS
+      !IV_OBJECT_TYPE type /RPM/OBJECT_TYPE
+      !IV_WORKFLOW_ID type /RPM/TV_WF_ID optional
+    exporting
+      !ET_USER_TAB type TSWHACTOR
+      !ET_EMAIL_TAB type /RPM/TT_WF_ACTORS .
+  class-methods GET_PORTAL_LINK
+    importing
+      !IS_ITEM_ATTRIBUTES type RPM_TS_PROJECT_INT optional
+      !IV_ITEM_NAME type RPM_TV_SHARED_DESCRIPTION optional
+      !IS_PORTFOLIO_ATTRIBUTES type /RPM/TS_PORTFOLIO_INT optional
+      !IV_PORTFOLIO_NAME type /RPM/TV_SHARED_DESCRIPTION optional
+      !IV_DP_FLAG type XFELD optional
+    exporting
+      !EV_LINK type /RPM/PORTAL_LINK .
+  class-methods GET_PARENT_BUCKET
+    importing
+      !BUCKET_GUID_CHILD type /RPM/TV_GUID
+    exporting
+      !BUCKET_GUID_PARENT type /RPM/TV_GUID
+      !BUCKET_ID_PARENT type /RPM/TV_EXTID
+      !BUCKET_NAME_PARENT type /RPM/TV_SHARED_DESCRIPTION .
+  class-methods GET_PARENT_BUCKET_BY_EXTID
+    importing
+      !BUCKET_EXTID_CHILD type /RPM/TV_EXTID
+    exporting
+      !BUCKET_GUID_PARENT type /RPM/TV_GUID
+      !BUCKET_ID_PARENT type /RPM/TV_EXTID
+      !BUCKET_NAME_PARENT type /RPM/TV_SHARED_DESCRIPTION .
+  class-methods GET_WORKFLOW_TYPE
+    importing
+      !IT_DECISION_NEW type RPM_TT_DECISION_INT optional
+      !IT_DECISION_OLD type RPM_TT_DECISION_INT optional
+      !IS_DECISION_OLD type RPM_TS_DECISION_INT optional
+      !IS_DECISION_NEW type RPM_TS_DECISION_INT optional
+    exporting
+      value(EV_ZCATEGORY) type ZDE_CATEGORY
+      value(ET_MSG) type /RPM/TT_MESSAGES .
+  class-methods GET_CATEGORY_WFTYPE
+    importing
+      value(IV_BUCKET_ID_CHILD) type /RPM/TV_EXTID
+      value(IV_DECISION_GUID) type RPM_TV_GUID
+    exporting
+      value(EV_ZCATEGORY) type ZDE_CATEGORY
+      value(ET_MSG) type /RPM/TT_MESSAGES .
+protected section. "test transport
+*"* protected components of class ZCL_PPM_WORKFLOW
+*"* do not include other source files here!!!
+private section."check transport
+*"* private components of class ZCL_PPM_WORKFLOW
+*"* do not include other source files here!!!
+ENDCLASS.
+
+
+
+CLASS ZCL_PPM_WORKFLOW IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_WORKFLOW->BI_OBJECT~DEFAULT_ATTRIBUTE_VALUE
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] RESULT                         TYPE REF TO DATA
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method BI_OBJECT~DEFAULT_ATTRIBUTE_VALUE.
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_WORKFLOW->BI_OBJECT~EXECUTE_DEFAULT_METHOD
+* +-------------------------------------------------------------------------------------------------+
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method BI_OBJECT~EXECUTE_DEFAULT_METHOD.
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_WORKFLOW->BI_OBJECT~RELEASE
+* +-------------------------------------------------------------------------------------------------+
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method BI_OBJECT~RELEASE.
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>BI_PERSISTENT~FIND_BY_LPOR
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] LPOR                           TYPE        SIBFLPOR
+* | [<-()] RESULT                         TYPE REF TO BI_PERSISTENT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method BI_PERSISTENT~FIND_BY_LPOR.
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_WORKFLOW->BI_PERSISTENT~LPOR
+* +-------------------------------------------------------------------------------------------------+
+* | [<-()] RESULT                         TYPE        SIBFLPOR
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method BI_PERSISTENT~LPOR.
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_PPM_WORKFLOW->BI_PERSISTENT~REFRESH
+* +-------------------------------------------------------------------------------------------------+
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+method BI_PERSISTENT~REFRESH.
+
+endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>CREATE_USER_EMAIL_LIST
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IT_ACL                         TYPE        /RPM/TT_ACO_PERMISSIONS
+* | [--->] IV_OBJECT_TYPE                 TYPE        /RPM/OBJECT_TYPE
+* | [--->] IV_WORKFLOW_ID                 TYPE        /RPM/TV_WF_ID(optional)
+* | [<---] ET_USER_TAB                    TYPE        TSWHACTOR
+* | [<---] ET_EMAIL_TAB                   TYPE        /RPM/TT_WF_ACTORS
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+METHOD CREATE_USER_EMAIL_LIST.
+
+  DATA: lt_wf_recipient TYPE /rpm/tt_wf_recip,
+        ls_wf_recipient TYPE /rpm/wf_recip,
+        ls_acl          TYPE /rpm/ts_aco_permission,
+        ls_actor        TYPE swhactor,
+        lv_email        TYPE so_name.
+
+* Read recipient configuration from /RPM/WF_RECIP
+  SELECT * INTO CORRESPONDING FIELDS OF TABLE lt_wf_recipient
+      FROM /rpm/wf_recip
+      WHERE object_type EQ iv_object_type
+      AND   wf_id EQ iv_workflow_id.
+
+  LOOP AT it_acl INTO ls_acl.
+
+    READ TABLE lt_wf_recipient INTO ls_wf_recipient WITH KEY activity_type = ls_acl-activity.
+
+    IF sy-subrc EQ 0.
+*     Get Users
+      ls_actor-objid = ls_acl-user.
+      ls_actor-otype = 'US'.
+      APPEND ls_actor TO et_user_tab.
+      CLEAR ls_actor.
+
+*     Get email IDs
+      lv_email = ls_acl-email.
+      APPEND lv_email TO et_email_tab.
+      CLEAR lv_email.
+    ENDIF.
+
+  ENDLOOP.
+
+  SORT et_user_tab.
+  DELETE ADJACENT DUPLICATES FROM et_user_tab.
+
+  SORT et_email_tab.
+  DELETE ADJACENT DUPLICATES FROM et_email_tab.
+
+ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>GET_CATEGORY_WFTYPE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_BUCKET_ID_CHILD             TYPE        /RPM/TV_EXTID
+* | [--->] IV_DECISION_GUID               TYPE        RPM_TV_GUID
+* | [<---] EV_ZCATEGORY                   TYPE        ZDE_CATEGORY
+* | [<---] ET_MSG                         TYPE        /RPM/TT_MESSAGES
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD GET_CATEGORY_WFTYPE.
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*29.01.2026  DSDK9A07KC   #CHG0029188   Log Issue E457
+*                                           Update new Logic to
+*                                          DoA list for approval
+*                                          to get Category
+*
+*---------------------------------------------------------------------
+    DATA:
+    lv_zbucket_parent   TYPE  /rpm/tv_extid,
+    lv_zzcomcat         TYPE  zcomponentisation_category,
+    lv_phase_id         TYPE  rpm_tv_extid,
+    lv_zcep_value       TYPE  /rpm/tv_curr_amount,
+    lv_zplaned          TYPE  zplan_status,
+    lv_zcategory        TYPE  zde_category,
+    lv_study_cost       TYPE /rpm/tv_curr_amount.
+
+    "Bucket Parent ID
+      SELECT SINGLE * FROM /rpm/decision INTO @DATA(ls_attributes_new)
+                            WHERE guid = @iv_decision_guid.
+      CHECK sy-subrc IS INITIAL.
+      "Call method to get Bucket Parent ID.
+
+       CALL METHOD zcl_ppm_workflow=>get_parent_bucket_by_extid
+         EXPORTING
+           bucket_extid_child =     iv_bucket_id_child
+         IMPORTING
+           bucket_guid_parent =     DATA(lv_bucket_guid_parent)" Guid for application objects
+           bucket_id_parent   =     DATA(lv_bucket_id_parent)" Business Object ID
+           bucket_name_parent =     DATA(lv_bucket_name_parent)" Name
+         .
+      lv_zbucket_parent = COND #( WHEN lv_bucket_id_parent IS NOT INITIAL THEN  lv_bucket_id_parent   ELSE '' ).
+
+      " C&CT Sub Category && Plan Status
+      SELECT SINGLE * FROM /rpm/item_d INTO @DATA(ls_item)
+                              WHERE guid = @ls_attributes_new-item_guid.
+      IF sy-subrc IS INITIAL.
+        "" C&CT Sub Category
+        lv_zzcomcat = COND #( WHEN ls_item-zzcomcat IS NOT INITIAL THEN  ls_item-zzcomcat  ELSE '' ).
+        "" Plan Status
+        lv_zplaned = COND #( WHEN ls_item-zzplanst IS NOT INITIAL THEN  ls_item-zzplanst   ELSE '' ).
+      ENDIF.
+      "Phase ID/Decision ID
+      lv_phase_id = COND #( WHEN ls_attributes_new-decision_id IS NOT INITIAL THEN  ls_attributes_new-decision_id  ELSE '' ).
+****** Get TEC Amount/ CEP Value(TEC AMT) ----------------------------------------------
+      CALL METHOD zcl_ppm_common=>get_approval_amt
+        EXPORTING
+          iv_guid   =     ls_attributes_new-guid
+        IMPORTING
+          ev_amount =     lv_zcep_value  .
+
+***** Calculate Study cost.-------------------------------------------------------------
+      lv_study_cost = 0.
+      CALL FUNCTION 'ZPPM_FM_WF_STUDIES_COST_CALC'
+        EXPORTING
+          iv_item_guid         = ls_attributes_new-item_guid
+          iv_decision_id       = ls_attributes_new-decision_id
+       IMPORTING
+         ev_study_cost        = lv_study_cost
+                .
+
+****************************************************************************************
+
+    CALL FUNCTION 'ZPPM_FM_WF_DETERMINE_CATGORY'
+      EXPORTING
+        iv_zbucket_parent       = lv_zbucket_parent
+        iv_zzcomcat             = lv_zzcomcat
+        iv_phase_id             = lv_phase_id
+        iv_zcep_value           = lv_zcep_value
+        iv_study_cost           = lv_study_cost
+        iv_zplaned              = lv_zplaned
+     IMPORTING
+       ev_zcategory              = lv_zcategory
+      TABLES
+        et_msg                  = et_msg
+              .
+    ev_zcategory =  COND #( WHEN lv_zcategory IS NOT INITIAL THEN  lv_zcategory  ELSE '' ).
+  ENDMETHOD."#EC CI_VALPAR
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>GET_PARENT_BUCKET
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] BUCKET_GUID_CHILD              TYPE        /RPM/TV_GUID
+* | [<---] BUCKET_GUID_PARENT             TYPE        /RPM/TV_GUID
+* | [<---] BUCKET_ID_PARENT               TYPE        /RPM/TV_EXTID
+* | [<---] BUCKET_NAME_PARENT             TYPE        /RPM/TV_SHARED_DESCRIPTION
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_parent_bucket.
+
+    CHECK bucket_guid_child IS NOT INITIAL.
+
+    DATA lv_root_id TYPE /rpm/tv_extid.
+
+    SELECT SINGLE a~external_id
+      FROM /rpm/bucket_d AS a
+    WHERE a~guid = @bucket_guid_child
+     INTO ( @DATA(lv_ext_id) ).
+    IF sy-subrc IS INITIAL.
+
+      lv_root_id = lv_ext_id+0(2).
+
+      SELECT SINGLE a~guid, a~external_id , b~text1
+        FROM /rpm/bucket_d AS a
+       INNER JOIN cgpl_text AS b
+        ON a~guid = b~guid
+      WHERE a~external_id = @lv_root_id
+       INTO ( @DATA(lv_bucket_id_parent),@DATA(lv_ext_id_parent), @DATA(lv_bucket_name_parent) ).
+      IF sy-subrc is INITIAL.
+          bucket_id_parent    = lv_ext_id_parent.
+          bucket_guid_parent  = lv_bucket_id_parent.
+          bucket_name_parent  = lv_bucket_name_parent.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>GET_PARENT_BUCKET_BY_EXTID
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] BUCKET_EXTID_CHILD             TYPE        /RPM/TV_EXTID
+* | [<---] BUCKET_GUID_PARENT             TYPE        /RPM/TV_GUID
+* | [<---] BUCKET_ID_PARENT               TYPE        /RPM/TV_EXTID
+* | [<---] BUCKET_NAME_PARENT             TYPE        /RPM/TV_SHARED_DESCRIPTION
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD GET_PARENT_BUCKET_BY_EXTID.
+
+    CHECK bucket_extid_child IS NOT INITIAL.
+
+    DATA lv_root_id TYPE /rpm/tv_extid.
+
+    SELECT SINGLE a~external_id
+      FROM /rpm/bucket_d AS a
+    WHERE a~external_id = @bucket_extid_child
+     INTO ( @DATA(lv_ext_id) ).
+    IF sy-subrc IS INITIAL.
+
+      lv_root_id = lv_ext_id+0(2).
+
+      SELECT SINGLE a~guid, a~external_id , b~text1
+        FROM /rpm/bucket_d AS a
+       INNER JOIN cgpl_text AS b
+        ON a~guid = b~guid
+      WHERE a~external_id = @lv_root_id
+       INTO ( @DATA(lv_bucket_id_parent),@DATA(lv_ext_id_parent), @DATA(lv_bucket_name_parent) ).
+      IF sy-subrc is INITIAL.
+          bucket_id_parent    = lv_ext_id_parent.
+          bucket_guid_parent  = lv_bucket_id_parent.
+          bucket_name_parent  = lv_bucket_name_parent.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>GET_PORTAL_LINK
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IS_ITEM_ATTRIBUTES             TYPE        RPM_TS_PROJECT_INT(optional)
+* | [--->] IV_ITEM_NAME                   TYPE        RPM_TV_SHARED_DESCRIPTION(optional)
+* | [--->] IS_PORTFOLIO_ATTRIBUTES        TYPE        /RPM/TS_PORTFOLIO_INT(optional)
+* | [--->] IV_PORTFOLIO_NAME              TYPE        /RPM/TV_SHARED_DESCRIPTION(optional)
+* | [--->] IV_DP_FLAG                     TYPE        XFELD(optional)
+* | [<---] EV_LINK                        TYPE        /RPM/PORTAL_LINK
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+METHOD GET_PORTAL_LINK.
+
+  DATA: lv_logsys TYPE logsys,
+        lt_ws_param TYPE olr3_tt_webserver_url_par,
+        ls_ws_param_url TYPE olr3_url_srv_par,
+        ls_ws_param_pcd TYPE olr3_url_srv_par,
+        lv_link TYPE /rpm/portal_link,
+        lv_str TYPE string.
+* Read the logical system for the current client
+  SELECT SINGLE logsys INTO lv_logsys FROM t000 WHERE mandt = sy-mandt.
+
+* Read the webserver parameters corresponding to this logical system
+  SELECT * FROM olr3_url_srv_par INTO TABLE lt_ws_param WHERE web_server = lv_logsys.
+
+* Read the parameter 'PORTALLINK'
+  READ TABLE lt_ws_param INTO ls_ws_param_url WITH KEY name = 'PORTALLINK'.
+  TRANSLATE ls_ws_param_url-value TO LOWER CASE.         "#EC TRANSLANG
+
+* Read the parameter 'PORTALPCDLOCATION'
+  READ TABLE lt_ws_param INTO ls_ws_param_pcd WITH KEY name = 'PORTALPCDLOCATION'.
+  TRANSLATE ls_ws_param_pcd-value TO LOWER CASE.         "#EC TRANSLANG
+
+* Store portal opening page URL in local variable
+  lv_link = ls_ws_param_url-value.
+  CONDENSE lv_link.
+
+*  IF is_item_attributes IS SUPPLIED.
+*
+**   Compose the URL
+*
+*    CONCATENATE  lv_link '?' 'NavigationTarget=ROLES://' ls_ws_param_pcd-value
+*    '/com.sap.pct.cprxrpm.port_mgmt/com.sap.pct.cprxrpm.port_mgmt_ep/com.sap.pct.cprxrpm.port_mgmt&DynamicParameter=PortfolioGUID%3D'
+*    INTO lv_link.
+*
+*    lv_str = is_item_attributes-rpm_project-portfolio_guid.
+*
+*    CONCATENATE lv_link lv_str '%26PortfolioName%3D' iv_portfolio_name '%26ObjectGUID%3D' INTO lv_link.
+*
+*    lv_str = is_item_attributes-rpm_project-portfl_item_guid.
+*
+*    CONCATENATE lv_link lv_str '%26ObjectName%3D' iv_item_name '%26ObjectType%3DRIH%26LinkID%3D0122' INTO lv_link.
+*
+*  ENDIF.
+
+* Export the link
+  ev_link = lv_link.
+
+ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>GET_WF_RECIPIENT_LIST
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] OBJECT_TYPE                    TYPE        /RPM/OBJECT_TYPE
+* | [--->] PORTFOLIO_GUID                 TYPE        /RPM/TV_GUID
+* | [--->] PORTFL_ITEM_GUID               TYPE        /RPM/TV_GUID
+* | [--->] WORKFLOW_ID                    TYPE        /RPM/TV_WF_ID
+* | [<-->] ACTOR_TAB                      TYPE        TSWHACTOR
+* | [<-->] RECIPIENTS                     TYPE        /RPM/TT_WF_ACTORS
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+METHOD GET_WF_RECIPIENT_LIST.
+
+  DATA: ls_context      TYPE  /rpm/ts_object_hier,
+        lt_acl          TYPE /rpm/tt_aco_permissions,
+        lt_acl_derived  TYPE /rpm/tt_aco_permissions,
+        lt_msg          TYPE /rpm/tt_messages,
+        lt_msg_derived  TYPE rpm_tt_messages,
+        lv_rc           TYPE i,
+        lv_rc_derived   TYPE i,
+        ls_guid         TYPE /rpm/ts_guid.
+* Fill in the context variable to retrieve the ACL
+  ls_context-object_guid    = portfl_item_guid.
+  ls_context-portfolio_guid = portfolio_guid.
+
+  SELECT SINGLE guid FROM inm_initiative INTO CORRESPONDING FIELDS OF ls_guid WHERE guid = portfl_item_guid.
+  IF sy-subrc IS INITIAL.
+    ls_context-object_type    = /rpm/cl_co=>sc_acotype_initiative.
+  ELSE.
+    ls_context-object_type    = /rpm/cl_co=>sc_acotype_item.
+  ENDIF.
+
+* Retrieve the Item ACL
+  CALL FUNCTION '/RPM/ACL_DISPLAY'
+    EXPORTING
+      is_context = ls_context
+    IMPORTING
+      et_acl     = lt_acl
+      et_msg     = lt_msg
+      ev_rc      = lv_rc.
+
+* Retrieve Inherited ACL
+  CALL FUNCTION '/RPM/GET_DERIVED_AUTHORIZATION'
+    EXPORTING
+      iv_guid        = portfl_item_guid
+      iv_object_type = ls_context-object_type
+    IMPORTING
+      et_acl         = lt_acl_derived
+      ev_rc          = lv_rc_derived
+      et_msg         = lt_msg_derived.
+
+* Append to Inherited ACL
+  APPEND LINES OF lt_acl_derived TO lt_acl.
+
+* Create list of recipient users and their emails
+  CALL METHOD /rpm/cl_workflow=>create_user_email_list
+    EXPORTING
+      it_acl         = lt_acl
+      iv_object_type = object_type
+      iv_workflow_id = workflow_id
+    IMPORTING
+      et_user_tab    = actor_tab
+      et_email_tab   = recipients.
+
+ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>GET_WORKFLOW_TYPE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IT_DECISION_NEW                TYPE        RPM_TT_DECISION_INT(optional)
+* | [--->] IT_DECISION_OLD                TYPE        RPM_TT_DECISION_INT(optional)
+* | [--->] IS_DECISION_OLD                TYPE        RPM_TS_DECISION_INT(optional)
+* | [--->] IS_DECISION_NEW                TYPE        RPM_TS_DECISION_INT(optional)
+* | [<---] EV_ZCATEGORY                   TYPE        ZDE_CATEGORY
+* | [<---] ET_MSG                         TYPE        /RPM/TT_MESSAGES
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_workflow_type.
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*29.01.2026  DSDK9A07KC   CRQ#CHG0029188   Log Issue E457
+*                                          The logic is used for Determination
+*                                          and return Category.
+*
+*
+*---------------------------------------------------------------------
+
+    DATA:
+    lv_zbucket_parent   TYPE  /rpm/tv_extid,
+    lv_zzcomcat         TYPE  zcomponentisation_category,
+    lv_phase_id         TYPE  rpm_tv_extid,
+    lv_zcep_value       TYPE  /rpm/tv_curr_amount,
+    lv_zplaned          TYPE  zplan_status,
+    lv_zcategory        TYPE  zde_category,
+    lv_study_cost       TYPE /rpm/tv_curr_amount.
+
+    "Bucket Parent ID
+      IF it_decision_new IS NOT INITIAL AND it_decision_old IS NOT INITIAL.
+       DATA(ls_attributes_new) = it_decision_new[ status = 'ZDS03' ].
+
+       DATA(ls_attributes_old) = it_decision_old[ decision_id = ls_attributes_new-decision_id ].
+     ELSE.
+       ls_attributes_new = is_decision_new.
+       ls_attributes_old = is_decision_old.
+      ENDIF.
+
+       CHECK ls_attributes_new IS NOT INITIAL.
+
+       CALL METHOD cl_rpm_decision=>get_data_attr_chg_wf
+            EXPORTING
+              is_attributes_old       = ls_attributes_old
+              is_attributes_new       = ls_attributes_new
+            IMPORTING
+              es_portfolio_attributes =  DATA(ls_portfolio_attributes)
+              es_bucket_attributes    =  DATA(ls_bucket_attributes)
+              es_item_attributes      =  DATA(ls_item_attributes)
+              ev_portfolio_name       =  DATA(lv_portfolio_name)
+              ev_bucket_name          =  DATA(lv_bucket_name)
+              ev_item_name            =  DATA(lv_item_name)
+              es_init_attributes      =  DATA(ls_init_attributes).
+
+      "Call method to get Bucket Parent ID.
+
+       CALL METHOD zcl_ppm_workflow=>get_parent_bucket_by_extid
+         EXPORTING
+           bucket_extid_child =     ls_bucket_attributes-external_id
+         IMPORTING
+           bucket_guid_parent =     DATA(lv_bucket_guid_parent)" Guid for application objects
+           bucket_id_parent   =     DATA(lv_bucket_id_parent)" Business Object ID
+           bucket_name_parent =     DATA(lv_bucket_name_parent)" Name
+         .
+      lv_zbucket_parent = COND #( WHEN lv_bucket_id_parent IS NOT INITIAL THEN  lv_bucket_id_parent   ELSE '' ).
+
+      " C&CT Sub Category && Plan Status
+      SELECT SINGLE * FROM /rpm/item_d INTO @DATA(ls_item)
+                              WHERE guid = @ls_attributes_new-item_guid.
+      IF sy-subrc IS INITIAL.
+        "" C&CT Sub Category
+        lv_zzcomcat = COND #( WHEN ls_item-zzcomcat IS NOT INITIAL THEN  ls_item-zzcomcat  ELSE '' ).
+        "" Plan Status
+        lv_zplaned = COND #( WHEN ls_item-zzplanst IS NOT INITIAL THEN  ls_item-zzplanst   ELSE '' ).
+      ENDIF.
+      "Phase ID/Decision ID
+      lv_phase_id = COND #( WHEN ls_attributes_new-decision_id IS NOT INITIAL THEN  ls_attributes_new-decision_id  ELSE '' ).
+****** Get TEC Amount/ CEP Value(TEC AMT) ----------------------------------------------
+      CALL METHOD zcl_ppm_common=>get_approval_amt
+        EXPORTING
+          iv_guid   =     ls_attributes_new-guid
+        IMPORTING
+          ev_amount =     lv_zcep_value  .
+
+***** Calculate Study cost.-------------------------------------------------------------
+      lv_study_cost = 0.
+      CALL FUNCTION 'ZPPM_FM_WF_STUDIES_COST_CALC'
+        EXPORTING
+          iv_item_guid         = ls_attributes_new-item_guid
+          iv_decision_id       = ls_attributes_new-decision_id
+       IMPORTING
+         ev_study_cost        = lv_study_cost
+                .
+
+****************************************************************************************
+
+    CALL FUNCTION 'ZPPM_FM_WF_DETERMINE_CATGORY'
+      EXPORTING
+        iv_zbucket_parent       = lv_zbucket_parent
+        iv_zzcomcat             = lv_zzcomcat
+        iv_phase_id             = lv_phase_id
+        iv_zcep_value           = lv_zcep_value
+        iv_study_cost           = lv_study_cost
+        iv_zplaned              = lv_zplaned
+     IMPORTING
+       ev_zcategory              = lv_zcategory
+      TABLES
+        et_msg                  = et_msg
+              .
+    ev_zcategory =  COND #( WHEN lv_zcategory IS NOT INITIAL THEN  lv_zcategory  ELSE '' ).
+  ENDMETHOD."#EC CI_VALPAR
+ENDCLASS.
