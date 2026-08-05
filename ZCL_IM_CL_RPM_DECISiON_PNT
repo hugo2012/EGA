@@ -1,2 +1,1287 @@
 * badi implementation class
+class ZCL_IM_CL_RPM_DECISION_PNT definition
+  public
+  final
+  create public .
 
+public section.
+
+  interfaces /RPM/IF_EX_DECISION_POINT .
+protected section.
+private section.
+ENDCLASS.
+
+
+
+CLASS ZCL_IM_CL_RPM_DECISION_PNT IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_IM_CL_RPM_DECISION_PNT->/RPM/IF_EX_DECISION_POINT~AFTER_MODIFY
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IT_DECISION_NEW                TYPE        RPM_TT_DECISION_INT
+* | [--->] IT_DECISION_OLD                TYPE        RPM_TT_DECISION_INT
+* | [--->] IV_CHANGE_MODE                 TYPE        CHAR1
+* | [--->] IS_ITEM_ATTRIBUTES             TYPE        RPM_TS_PROJECT_INT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method /RPM/IF_EX_DECISION_POINT~AFTER_MODIFY.
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_IM_CL_RPM_DECISION_PNT->/RPM/IF_EX_DECISION_POINT~ATTRIBUTE_MODIFY
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IS_ATTRIBUTE_OLD               TYPE        RPM_TS_DECISION_INT
+* | [--->] IS_ATTRIBUTE_NEW               TYPE        RPM_TS_DECISION_INT
+* | [--->] IV_STATE                       TYPE        RPM_TV_OBJECT_STATE
+* | [<-->] CS_ATTRIBUTE_NEW               TYPE        RPM_TS_DECISION_INT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD /rpm/if_ex_decision_point~attribute_modify.
+
+    DATA:   ls_msg                 TYPE symsg,
+            lv_rpm_msg_txt         TYPE rpm_msg_txt,
+            lr_message_handler_ppm TYPE REF TO /rpm/cl_message_handle,
+            lt_message             TYPE /rpm/tt_messages,
+            ls_message             TYPE /rpm/ts_messages,
+            lv_message             TYPE string,
+
+            lv_tplnr               TYPE ztplnr.             "C90007518
+* Copy to new Item - Initiate Status
+    SELECT COUNT(*) FROM /rpm/decision
+    WHERE guid = @cs_attribute_new-guid.
+    IF sy-subrc <> 0."Create new - copy to new Item
+      IF cs_attribute_new-active = 'X'.
+        cs_attribute_new-status = 'ZDS01'."Not initiated
+      ENDIF.
+    ENDIF.
+    CHECK is_attribute_old-status <> is_attribute_new-status.
+    lr_message_handler_ppm ?= /rpm/cl_message_handle=>get_instance( ).
+    CALL METHOD lr_message_handler_ppm->get_all_messages
+      EXPORTING
+        iv_sort     = abap_true
+      RECEIVING
+        et_messages = lt_message.
+
+    SELECT SINGLE * FROM /rpm/item_d INTO @DATA(ls_item)
+          WHERE guid = @is_attribute_new-item_guid.
+
+    SELECT SINGLE * FROM /rpm/decision INTO @DATA(ls_decision)
+    WHERE guid = @is_attribute_new-guid AND item_guid = @ls_item-guid AND decision_id = @is_attribute_new-decision_id.
+
+    IF is_attribute_new-status = 'ZDS03'."Summited for Approval
+
+      IF ls_item-zzplanst = '04'."Pending
+        TRY.
+            MESSAGE e053(zppm) INTO lv_message.
+            lv_rpm_msg_txt = lv_message.
+            MOVE-CORRESPONDING sy TO ls_msg.
+
+            CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message
+              EXPORTING
+                in_message_type = 'E'
+                in_message_text = lv_rpm_msg_txt.
+          CATCH /rpm/cx_api_message_buffer.
+
+        ENDTRY.
+      ENDIF.
+      IF ls_item-zzplanst = '03' "N/A
+        AND ( ls_decision-decision_id = 'ZDP02'
+         OR  ls_decision-decision_id = 'ZDP03'
+        OR  ls_decision-decision_id = 'ZDP04'
+          OR  ls_decision-decision_id = 'ZDP05'
+        OR  ls_decision-decision_id = 'ZDP06' ).
+        TRY.
+            MESSAGE e052(zppm) INTO lv_message.
+            MOVE-CORRESPONDING sy TO ls_msg.
+            lv_rpm_msg_txt = lv_message.
+
+            CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message
+              EXPORTING
+                in_message_type = 'E'
+                in_message_text = lv_rpm_msg_txt.
+          CATCH /rpm/cx_api_message_buffer.
+
+        ENDTRY.
+      ENDIF.
+*Begin of changes by C90007518 for CHG0014884 on 02/05/2025
+      IF ls_decision-decision_id = 'ZDP03'.
+
+        CALL FUNCTION 'CONVERSION_EXIT_TPLNR_OUTPUT'
+          EXPORTING
+            input  = ls_item-zztplnr
+          IMPORTING
+            output = lv_tplnr.
+
+        DATA(lv_fun_location) = strlen( lv_tplnr ).
+        IF lv_fun_location LE 12.
+          TRY.
+              MESSAGE e058(zppm) INTO lv_message.
+              MOVE-CORRESPONDING sy TO ls_msg.
+              lv_rpm_msg_txt = lv_message.
+
+              CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message
+                EXPORTING
+                  in_message_type = 'E'
+                  in_message_text = lv_rpm_msg_txt.
+            CATCH /rpm/cx_api_message_buffer.
+
+          ENDTRY.
+        ENDIF.
+      ENDIF.
+*End of changes by C90007518 for CHG0014884 on 02/05/2025
+    ELSEIF is_attribute_old-status = 'ZDS03'."Summited for Approval
+      IF ls_item-zzplanst = '04'."Pending
+        MESSAGE e053(zppm) INTO lv_message.
+        DELETE lt_message WHERE msg_txt = lv_message.
+      ENDIF.
+      IF ls_item-zzplanst = '03' "N/A
+        AND ( ls_decision-decision_id = 'ZDP02'
+         OR  ls_decision-decision_id = 'ZDP03'
+        OR  ls_decision-decision_id = 'ZDP04'
+          OR  ls_decision-decision_id = 'ZDP05'
+        OR  ls_decision-decision_id = 'ZDP06' ).
+        MESSAGE e052(zppm) INTO lv_message.
+        DELETE lt_message WHERE msg_txt = lv_message.
+      ENDIF.
+      IF lt_message IS NOT INITIAL.
+        LOOP AT lt_message INTO ls_message.
+          lv_rpm_msg_txt = ls_message-msg_txt.
+          TRY.
+              CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message
+                EXPORTING
+                  in_message_type = 'E'
+                  in_message_text = lv_rpm_msg_txt.
+            CATCH /rpm/cx_api_message_buffer.
+
+          ENDTRY.
+        ENDLOOP.
+      ELSE.
+        lr_message_handler_ppm->/rpm/if_message_buffer~delete_all_object_messages( ).
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_IM_CL_RPM_DECISION_PNT->/RPM/IF_EX_DECISION_POINT~BEFORE_MODIFY
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IT_DECISION_OLD                TYPE        RPM_TT_DECISION_INT
+* | [--->] IV_CHANGE_MODE                 TYPE        CHAR1
+* | [--->] IS_ITEM_ATTRIBUTES             TYPE        RPM_TS_PROJECT_INT
+* | [<-->] CT_DECISION_NEW                TYPE        RPM_TT_DECISION_INT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD /rpm/if_ex_decision_point~before_modify.
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*29.01.2026  DSDK9A07KC   CRQ#CHG0029188   Log Issue E457
+*                                           Update new Logic to
+*                                          DoA list for approval
+*                                          based on Category and workflow type
+*
+*---------------------------------------------------------------------
+* check the status is in progress and set actual start date accordingly
+    LOOP AT ct_decision_new ASSIGNING FIELD-SYMBOL(<ls_decision>)
+                  WHERE status EQ 'ZDS02'.
+      IF <ls_decision>-actual_start IS INITIAL.
+        <ls_decision>-actual_start = sy-datum.
+      ENDIF.
+    ENDLOOP.
+
+
+    READ TABLE ct_decision_new ASSIGNING <ls_decision>
+                   WITH KEY status = 'ZDS03'.
+    IF sy-subrc IS INITIAL.
+      CLEAR zcl_ppm_common=>mt_ppm030[].
+      CHECK zcl_ppm_common=>gv_ui_stat_chg = abap_true.
+
+*<<<< Start of the change by C90005555 DSDK9A07KC CHG0029188 - Log Issue 457------------------------------------------
+**------------------------------------------------------------------------------------
+**Purpose :---------------------------------------------------------------------------
+* Call method ZCL_PPM_WORKFLOW=>GET_WORKFLOW_TYPE  to get workflow type,
+* Then pass this workflow type to zcl_ppm_common=>get_approvers_wf to
+* get DoA list
+**------------------------------------------------------------------------------------
+
+      CALL METHOD zcl_ppm_workflow=>get_workflow_type
+        EXPORTING
+          it_decision_new =  ct_decision_new
+          it_decision_old =  it_decision_old
+        IMPORTING
+          ev_zcategory       = DATA(lv_zcategory)    " Category
+          et_msg            = DATA(lt_msg)    " Error Messages
+        .
+*>>>> End of change by C90005555  CHG0029188  DSDK9A07KC - Log Issue 457----------------------------------------
+
+      CALL METHOD zcl_ppm_common=>get_approvers_wf
+        EXPORTING
+          iv_guid       = <ls_decision>-guid
+          iv_zcategory    = lv_zcategory          "Added by C90005555 #DSDK9A07KC #CHG0029188
+          ev_status     = <ls_decision>-status.
+
+    ENDIF.
+
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_IM_CL_RPM_DECISION_PNT->/RPM/IF_EX_DECISION_POINT~GET_ATTRIBUTES
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IS_ATTRIBUTES_OLD              TYPE        /RPM/TS_DECISION_API
+* | [<-->] CS_ATTRIBUTES_NEW              TYPE        /RPM/TS_DECISION_API
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  method /RPM/IF_EX_DECISION_POINT~GET_ATTRIBUTES.
+  endmethod.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_IM_CL_RPM_DECISION_PNT->/RPM/IF_EX_DECISION_POINT~ON_COMMIT_CHANGES
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IS_ATTRIBUTES_NEW              TYPE        RPM_TS_DECISION_INT
+* | [--->] IS_ATTRIBUTES_OLD              TYPE        RPM_TS_DECISION_INT
+* | [--->] IV_STATE                       TYPE        RPM_TV_OBJECT_STATE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD /rpm/if_ex_decision_point~on_commit_changes.
+* Below rules will trigger the workflow
+* 1. Check if status of the decision point is Submitted for approval
+* 2. If yes then check if decision point is active to trigger workflow
+* 3. If decision point allowed to trigger workflow then call method
+* GET_DATA_ATTR_CHG_WF( Get data for triggering DP Attribute Change workflow) of class
+* CL_RPM_DECISION .
+* 4. Based on collected data on step one trigger FM /RPM/TRIGGER_DP_STAT_CHANGE_WF
+*    which will trigger standard change DP status workflow.
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*19.04.2021  DSDK982173   CRQ#133030       Workflow Duplicate fix
+*                                          Workflow getting triggered
+*                                          on every save from Decision point
+*                                          FPM. This is due bug with SAP
+*                                          after first save system is allowing
+*                                          to save again.
+*---------------------------------------------------------------------
+*29.01.2026  DSDK9A07KC  #CHG0029188  - Log Issue 457 - CMOS DoA Update for 2026
+* Purrpose: comment the block of logic code that was not used in the system
+*           From the line numer 205 to  254
+****************************************************************************
+
+
+    CONSTANTS:lc_name TYPE tvarvc-name VALUE 'ZPPM_WF_AUTO_APPRV_AMT'.
+    DATA lv_amt_m TYPE /rpm/v_fin_plan-amount.
+    DATA: lv_amt TYPE /rpm/v_fin_plan-amount.
+
+    DATA: lt_dd03p                TYPE TABLE OF dd03p,
+          ls_dd03p                TYPE dd03p,
+          ls_chg_attribute        TYPE /rpm/ts_changed_attrib,
+          ls_item_attributes      TYPE rpm_ts_project_int,
+          ls_portfolio_attributes TYPE /rpm/ts_portfolio_int,
+          ls_bucket_attributes    TYPE /rpm/ts_bucket_int,
+          lv_item_name            TYPE rpm_tv_shared_description,
+          lv_portfolio_name       TYPE /rpm/tv_shared_description,
+          lv_bucket_name          TYPE /rpm/tv_shared_description,
+          lv_string               TYPE string,
+          lv_link                 TYPE /rpm/portal_link,
+          lv_changed_on           TYPE /rpm/tv_timestamp,
+          lv_username             TYPE ad_namtext,
+          ls_init_attributes      TYPE inm_ts_initiative_ext.
+    DATA: lv_stat_text_old TYPE /rpm/object_type_t,
+          lv_stat_text_new TYPE /rpm/object_type_t.
+    DATA lt_wf_app_list TYPE TABLE OF zppm_decision_app_s.
+    DATA lv_pspid TYPE ps_pspid.
+    DATA lv_objid TYPE objec-realo.
+    DATA lv_user TYPE xubname.
+    DATA          ls_context         TYPE /rpm/ts_object_hier.
+    DATA:         lt_msg TYPE /rpm/tt_messages,
+                  ls_msg TYPE /rpm/ts_messages.
+    DATA:lt_tmp_roles TYPE /rpm/tt_acl_roles,
+         lt_tmp_acls  TYPE /rpm/tt_aco_permissions.
+    DATA:lv_rc                 TYPE i.
+
+    DATA: lo_fin_cap_planning_api TYPE REF TO /rpm/cl_fin_cap_planning_api,
+          ls_plan_info            TYPE /rpm/ts_plan_info,
+          ls_plan_info_g          TYPE /rpm/ts_plan_info,
+          lt_msgs                 TYPE /rpm/tt_messages,
+          lt_filter_data_api      TYPE /rpm/tt_filter_data_api,
+          lv_edit_mode            TYPE  /rpm/tv_edit_mode,
+          lv_es_mode              TYPE /rpm/ts_change_mode,
+          lt_planning_rows        TYPE /rpm/tt_row_keys,
+          lt_fin_groups           TYPE /rpm/tt_fin_group_api,
+          lt_fin_plan             TYPE /rpm/tt_plan_api,
+          lt_fields_desc          TYPE /rpm/tt_fields_description,
+          lt_messages	            TYPE /rpm/tt_messages,
+          lv_rejected	            TYPE boole_d,
+          lv_category_guid        TYPE rpm_tv_guid,
+          lv_rejected_1           TYPE boole_d
+          .
+
+     DATA: lv_vers TYPE inm_tv_version_type VALUE '01',
+           lv_verhdr TYPE /rpm/tv_version_name,
+           lv_decid TYPE char1,
+           lv_zzgateno TYPE zzgateno,
+           "Changed by by C90005555 TR: DSDK9A07KC to fix Code inspector check
+           "lv_cpvernm TYPE /rpm/tv_version_name,
+           lv_cpvernm TYPE string,
+           "ENd of CHange by by C90005555 TR: DSDK9A07KC to fix Code inspector check
+           lv_verpar TYPE /rpm/tv_extid,
+           lt_item TYPE /rpm/tt_guid,
+           ls_attributes_new TYPE  zppm_tmp_001,
+           lv_external_id	TYPE /rpm/tv_version_id.
+
+     DATA ls_attr TYPE /rpm/ts_decision_api.
+
+     DATA: lv_ext_key	            TYPE inm_of_tv_object_key,
+           lv_gate_curr_no        TYPE zzgateno,
+           lv_gate_no_tmp         TYPE zzgateno,
+           lv_decision_id_curr    TYPE rpm_tv_extid,
+           ls_attr_new_crj2	      TYPE /rpm/ts_decision_api,
+           lv_external_id_new     TYPE /rpm/tv_extid,
+           lv_flag                TYPE boole_d.
+
+    FIELD-SYMBOLS : <fs_msg> TYPE /rpm/ts_messages.
+    CLEAR: ls_attributes_new.
+
+    DATA(lv_status_new) = is_attributes_new-status.
+    MOVE is_attributes_new-decision_id+4(1) TO lv_gate_no_tmp.
+    IF iv_state EQ cl_rpm_co=>sc_state_changed AND is_attributes_new-active = abap_true AND  lv_gate_no_tmp >= 2. " Begin of Log issue 174 - coopy CJR2 values PPM to CF.**************************************#
+          "IF is_attributes_new-active = abap_true.
+            CLEAR : lv_ext_key,lv_external_id_new .
+            IMPORT lv_dummy_key = lv_ext_key FROM MEMORY ID 'ZPPM_PSID_01'.
+            IF lv_ext_key IS NOT INITIAL.
+              lv_external_id_new  = lv_ext_key.
+              FREE MEMORY ID 'ZPPM_PSID_01'.
+                "* get decision details
+                SELECT * FROM /rpm/decision INTO TABLE @DATA(lt_decs_crj2)
+                                       WHERE item_guid = @is_attributes_new-item_guid
+                                          " AND decision_id = @lv_decision_id_curr
+                                           AND status NE ''
+                                       ORDER BY decision_id DESCENDING.
+                IF sy-subrc IS INITIAL.
+                  lv_flag = abap_false.
+                  LOOP AT lt_decs_crj2 ASSIGNING FIELD-SYMBOL(<lfs_desc>).
+                    IF <lfs_desc>-active = abap_true.
+                      lv_flag = abap_true.
+                    ELSE.
+                      IF lv_flag = abap_true.
+                        DATA(ls_decs_crj2) = <lfs_desc>.
+                        EXIT.
+                      ENDIF.
+                    ENDIF.
+                  ENDLOOP.
+
+                  MOVE-CORRESPONDING ls_decs_crj2 TO ls_attr_new_crj2.
+                   IF is_attributes_new-decision_id EQ 'ZDP01'  OR is_attributes_new-decision_id  EQ 'ZDP02' OR is_attributes_new-decision_id  EQ 'ZDP03'
+                     OR is_attributes_new-decision_id  EQ 'ZDP04'.
+                      "Based on the requirement(FS) only process for copyin when the following types: Z001 - Capital project, Z003 - Fast track capital project
+                      ",Z004 - Lite capital project
+
+                           SELECT SINGLE * FROM /rpm/item_d INTO @DATA(ls_item_1)
+                              WHERE guid = @is_attributes_new-item_guid
+                              AND external_id = @lv_external_id_new.
+                            IF sy-subrc IS INITIAL.
+                              IF ls_item_1-item_type = 'Z001' OR ls_item_1-item_type = 'Z003' OR ls_item_1-item_type = 'Z004'.
+
+                                CLEAR lt_messages.
+                                SELECT SINGLE * FROM prps INTO @DATA(ls_prps)
+                                WHERE poski = @ls_item_1-external_id
+                                AND stufe = 1.
+                                IF sy-subrc IS INITIAL.
+                                  SELECT  * FROM cosp INTO TABLE @DATA(lt_rpsco)
+                                    WHERE lednr = '00'
+                                     AND objnr  =  @ls_prps-objnr
+                                     AND wrttp = '01'
+                                     AND versn = 'CF'
+                                     AND kstar = '0000480810'
+                                     AND vrgng = 'RKP1'.
+                                   IF sy-subrc IS NOT INITIAL.
+                                     CALL METHOD zcl_ppm_common=>copy_cjr2_values_ppm
+                                      EXPORTING
+                                        is_attributes = ls_attr_new_crj2
+                                        iv_item_type  = ls_item_1-item_type
+                                        iv_posid      = ls_item_1-external_id
+                                        iv_status     = ls_attr_new_crj2-status
+                                      IMPORTING
+                                        et_messages =  lt_messages .
+                                   ENDIF.
+                                ENDIF.
+                               ENDIF.
+                            ENDIF.
+
+                       ENDIF.
+                ENDIF.
+              ENDIF.
+
+            "ENDIF.
+    ENDIF.
+********************************************************************END OF " Log issue 174 - coopy CJR2 values PPM to CF.**************************************#
+    IF iv_state EQ cl_rpm_co=>sc_state_changed
+      AND lv_status_new = 'ZDS03'.
+      DATA(lv_old_status) = is_attributes_old-status.
+      IF is_attributes_new-status NE lv_old_status. " CRQ#133030 Changes C90004210 19.04.2021
+          CALL METHOD cl_rpm_language_buffer=>convert_langu_to_laiso
+          EXPORTING
+            iv_langu    = sy-langu
+          RECEIVING
+            rv_language = DATA(lv_lang).
+
+          SELECT SINGLE * FROM /rpm/item_d INTO @DATA(ls_item)
+                              WHERE guid = @is_attributes_new-item_guid.
+
+          ls_context-object_type = /rpm/cl_co=>sc_item.
+          ls_context-object_guid = ls_item-guid.
+          ls_context-portfolio_guid = ls_item-portfolio_guid.
+
+          CALL FUNCTION '/RPM/ACL_DISPLAY'
+            EXPORTING
+              is_context   = ls_context
+              iv_edit_mode = /rpm/cl_co=>sc_edit_mode_display
+              iv_language  = lv_lang
+            IMPORTING
+              et_acl       = lt_tmp_acls
+              et_acl_roles = lt_tmp_roles
+              ev_rc        = lv_rc
+              et_msg       = lt_msg.
+
+          CHECK lt_tmp_roles IS INITIAL.
+*<<<< Start of the change by C90005555 #DSDK9A07KC  #CHG0029188- Log Issue 457------------------------------------------
+* TR: DSDK9A07KC
+* Because this block of logic code haven't used yet in the system-----
+*          SELECT SINGLE * FROM zppm035 INTO @DATA(ls_035)
+*                             WHERE zzmteam = @ls_item-zzmteam
+*                              AND  area = @ls_item-geography
+*                              AND  zzplanst  = @ls_item-zzplanst.
+*          CHECK sy-subrc IS INITIAL.
+**
+**          CALL FUNCTION 'CONVERSION_EXIT_ABPSN_INPUT'
+**            EXPORTING
+**              input  = ls_item-external_id
+**            IMPORTING
+**              output = lv_pspid.
+**
+**          SELECT SINGLE * FROM proj INTO @DATA(ls_proj)
+**                              WHERE pspid = @lv_pspid.
+**    ZDP00
+*
+*          SELECT SINGLE * FROM zppm024 INTO @DATA(l_zppm024)
+*                                 WHERE zzitmty = @ls_item-item_type
+*                                  AND  zzphase = @is_attributes_new-decision_id
+*                                  AND  zzdecid = @is_attributes_new-status
+*                                  AND  zzwftype = @ls_035-zzwftype
+*                                  AND  zzactv = @abap_true.
+*          IF sy-subrc IS INITIAL.
+*
+*          ELSE.
+** Commented by Log issue 432 ***************************************#
+*
+** It should alway set lv_amt_m  = 0
+**            SELECT SINGLE * FROM tvarvc INTO @DATA(l_tvarvc)
+**                                         WHERE name = @lc_name.
+**            IF sy-subrc IS INITIAL.
+**              lv_amt_m = l_tvarvc-low.
+**            ENDIF.
+**            CALL METHOD zcl_ppm_common=>get_approval_amt
+**              EXPORTING
+**                iv_guid   = is_attributes_new-guid
+**              IMPORTING
+**                ev_amount = lv_amt.
+**            IF lv_amt <= lv_amt_m
+**                  AND is_attributes_new-decision_id EQ 'ZDP00'.
+**            ELSE.
+**              EXIT.
+**            ENDIF.
+*            EXIT.
+** End of  Log issue 432 ***************************************#
+*          ENDIF.
+*>>>> End of change by C90005555  #DSDK9A07KC  #CHG0029188- Log Issue 457----------------------------------------
+*     Get Decision Point Status Text Old
+          SELECT SINGLE text INTO lv_stat_text_old FROM /rpm/status_t WHERE langu     = sy-langu
+                                                                      AND   status    = is_attributes_old-status.
+
+*     Get Decision Point Status Text New
+          SELECT SINGLE text INTO lv_stat_text_new FROM /rpm/status_t WHERE langu     = sy-langu
+                                                                      AND   status    = is_attributes_new-status.
+*       Get full username
+          ASSIGN COMPONENT 'ZZREQUESTOR' OF STRUCTURE is_attributes_new TO FIELD-SYMBOL(<fs1>). "get requestor value
+          IF <fs1> IS ASSIGNED.
+            lv_objid = <fs1>.
+            SELECT SINGLE usrid FROM pa0105 INTO lv_objid " get user id from comm tab
+                                         WHERE pernr = <fs1>
+                                         AND   subty = '0001'
+                                         AND   endda GE sy-datum.
+
+            lv_user = lv_objid.
+          ENDIF.
+          DATA(lv_user_info) =   zcl_ppm_common=>get_user_info( ov_user = lv_user ).
+          lv_username = lv_user_info-name.
+
+*          CALL FUNCTION 'USER_NAME_GET'
+*            IMPORTING
+*              full_user_name = lv_username.
+
+*       Trigger Decision Point Attribute Change Workflow
+          CONCATENATE sy-datum sy-uzeit INTO lv_string.
+          lv_changed_on = lv_string.
+
+
+          CALL METHOD cl_rpm_decision=>get_data_attr_chg_wf
+            EXPORTING
+              is_attributes_old       = is_attributes_old
+              is_attributes_new       = is_attributes_new
+            IMPORTING
+              es_portfolio_attributes = ls_portfolio_attributes
+              es_bucket_attributes    = ls_bucket_attributes
+              es_item_attributes      = ls_item_attributes
+              ev_portfolio_name       = lv_portfolio_name
+              ev_bucket_name          = lv_bucket_name
+              ev_item_name            = lv_item_name
+              es_init_attributes      = ls_init_attributes.
+
+          " update data
+          CALL FUNCTION 'ZPPM_FM_WF_APP_LIST_UPDATE' DESTINATION 'NONE'
+            EXPORTING
+              iv_guid    = is_attributes_old-guid
+              iv_mode    = 'I'
+            TABLES
+              t_app_list = zcl_ppm_common=>mt_wf_app_list[].
+          " close connection
+          CALL FUNCTION 'RFC_CONNECTION_CLOSE'
+            EXPORTING
+              destination          = 'NONE'
+            EXCEPTIONS
+              destination_not_open = 1
+              OTHERS               = 2.
+          IF sy-subrc <> 0.
+          ENDIF.
+          " Trigger workflow
+          CALL FUNCTION '/RPM/TRIGGER_DP_STAT_CHANGE_WF'
+            EXPORTING
+              object_type           = 'EPO'
+              portfolio_guid        = ls_item_attributes-rpm_project-portfolio_guid
+              portfolio_id          = ls_portfolio_attributes-external_id
+              portfolio_name        = lv_portfolio_name
+              bucket_guid           = ls_item_attributes-rpm_project-parent_guid
+              bucket_id             = ls_bucket_attributes-external_id
+              bucket_name           = lv_bucket_name
+              portfl_item_guid      = ls_item_attributes-rpm_project-portfl_item_guid
+              item_id               = ls_item_attributes-external_id
+              item_name             = lv_item_name
+              decision_guid         = is_attributes_old-guid
+              decision_id           = is_attributes_old-decision_id
+              decision_name         = is_attributes_new-name
+              decision_status_old   = is_attributes_old-status
+              decision_status_old_t = lv_stat_text_old
+              decision_status_new   = is_attributes_new-status
+              decision_status_new_t = lv_stat_text_new
+              rpm_changed_on        = lv_changed_on
+              changed_by            = lv_user
+              changed_by_name       = lv_username
+              oc_typeid             = 'CL_RPM_DECISION'
+              workflow_id           = /rpm/cl_co=>sc_dp_stat_change_wf
+              portal_link           = lv_link
+              commit_work           = 'X'.
+
+          " clear global class variables
+          CLEAR: zcl_ppm_common=>gv_ui_stat_chg,zcl_ppm_common=>mt_wf_app_list[].
+
+      ENDIF.
+
+    ELSEIF iv_state EQ cl_rpm_co=>sc_state_changed
+      AND ( is_attributes_new-status = 'ZDS06'
+         OR is_attributes_new-status = 'ZDS08' ).
+      CALL METHOD cl_rpm_decision=>get_data_attr_chg_wf
+        EXPORTING
+          is_attributes_old       = is_attributes_old
+          is_attributes_new       = is_attributes_new
+        IMPORTING
+          es_portfolio_attributes = ls_portfolio_attributes
+          es_bucket_attributes    = ls_bucket_attributes
+          es_item_attributes      = ls_item_attributes
+          ev_portfolio_name       = lv_portfolio_name
+          ev_bucket_name          = lv_bucket_name
+          ev_item_name            = lv_item_name
+          es_init_attributes      = ls_init_attributes.
+
+      CALL FUNCTION 'ZPPM_FM_HLD_CANC_EMAIL' DESTINATION 'NONE'
+        EXPORTING
+          iv_guid     = is_attributes_new-guid
+          bucket_id   = ls_bucket_attributes-external_id
+          bucket_name = lv_bucket_name
+          status      = is_attributes_old-status
+          changed_by  = is_attributes_new-changed_by.
+
+      CALL FUNCTION 'RFC_CONNECTION_CLOSE'
+        EXPORTING
+          destination          = 'NONE'
+        EXCEPTIONS
+          destination_not_open = 1
+          OTHERS               = 2.
+      IF sy-subrc <> 0.
+      ENDIF.
+*Begin of E076 - #DSDK993485#*******************************************************************************************************
+    ELSEIF iv_state EQ cl_rpm_co=>sc_state_changed
+      AND  ( is_attributes_new-status = 'ZDS04' OR
+             is_attributes_new-status = 'ZDS11' OR
+             is_attributes_new-status = 'ZDS09' ).
+
+      CLEAR ls_item.
+
+      SELECT SINGLE * FROM /rpm/item_d INTO @ls_item
+            WHERE guid = @is_attributes_new-item_guid.
+
+
+       SELECT SINGLE * FROM /rpm/decision INTO @DATA(ls_decision)
+          WHERE guid = @is_attributes_new-guid AND item_guid = @ls_item-guid AND decision_id = @is_attributes_new-decision_id.
+
+       IF sy-subrc IS INITIAL.
+
+            APPEND VALUE #( guid = is_attributes_new-item_guid ) TO lt_item.
+
+            lv_decid = is_attributes_new-decision_id+4(1).
+            MOVE lv_decid TO lv_zzgateno.
+
+            lv_verhdr = |Approved Gate| && | { lv_decid }|.
+            lv_cpvernm = |{ ls_item-external_id }| && |.G{ lv_decid }|.
+            lv_verpar =  ls_item-external_id.
+
+            lv_external_id = |{  ls_item-external_id }| && |.G{ lv_decid }|.
+
+            SELECT SINGLE version_guid_h FROM /rpm/it_ver_ctrl INTO @DATA(ls_it_ver)
+            WHERE original_guid_d = @ls_item-guid AND version_id = @lv_external_id.
+            IF sy-subrc IS NOT INITIAL. "AND ls_attributes_new-decision_id = is_attributes_new-decision_id
+              "AND ls_attributes_new-status =  is_attributes_new-status.
+               WAIT UP TO 2 SECONDS.
+               SELECT SINGLE * FROM zppm_tmp_001 INTO CORRESPONDING FIELDS OF ls_attributes_new
+               WHERE item_guid = is_attributes_new-item_guid AND decision_id = is_attributes_new-decision_id
+                     AND status = is_attributes_new-status.
+              IF sy-subrc IS INITIAL.
+
+                SELECT SINGLE * FROM zppm040 INTO @DATA(ls_ppm040)
+                  WHERE status = @is_attributes_new-status.
+                IF sy-subrc IS INITIAL.
+                  SELECT SINGLE * FROM zppm039 INTO @DATA(ls_ppm039)
+                  WHERE item_type = @ls_item-item_type AND zzgate_no = @lv_zzgateno.
+
+                  IF sy-subrc IS INITIAL AND is_attributes_old-active = 'X'.
+                       CALL FUNCTION '/RPM/ITEMS_VERS_CREATE_SYNCH'
+                      " STARTING NEW TASK 'ZPPM_ZCRATE_VERSION'
+                       DESTINATION 'NONE'
+                       EXPORTING
+                         it_item_guids                 = lt_item
+                         iv_version_type               = lv_vers
+                         iv_vers_hdr_name              = lv_verhdr
+                         iv_vers_hdr_description       = lv_cpvernm
+                         IMPORTING
+                            ev_rc                      = lv_rc
+                            et_messages                = lt_messages.
+
+                        " close connection
+                        CALL FUNCTION 'RFC_CONNECTION_CLOSE'
+                          EXPORTING
+                            destination          = 'NONE'
+                          EXCEPTIONS
+                            destination_not_open = 1
+                            OTHERS               = 2.
+                        IF sy-subrc <> 0.
+                        ENDIF.
+                   ENDIF.
+                ENDIF.
+              ENDIF.
+
+            ENDIF.
+      ENDIF.
+
+*END of E076 - #DSDK993485#*******************************************************************************************************
+   ENDIF.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_IM_CL_RPM_DECISION_PNT->/RPM/IF_EX_DECISION_POINT~PREPARE_TO_SAVE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IS_ATTRIBUTES_NEW              TYPE        RPM_TS_DECISION_INT
+* | [--->] IS_ATTRIBUTES_OLD              TYPE        RPM_TS_DECISION_INT
+* | [<-->] RV_RC                          TYPE        I
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD /rpm/if_ex_decision_point~prepare_to_save.
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*21.02.2021  DSDK985291   CRQ122651       Throw error message if
+*                                         Roles are not removed
+
+*23.02.2022  DSDK992070                   Prevent Gate 0 from being
+*                                         set to "Submitted for approval"
+*                                         when Cashflow is 0.
+* 24.01.2024  DSDK997076                  Prevent the workflow being triggered
+*                                         if Planning status is 'N/A' when the active gate is 2
+*                                         if ZZPLANST = 03 And Active gate  = ZDP02 and Status = ZDS03
+*
+* 31.12.2024  DSDK9A01PN                  Prevent the workflow being triggered
+*                                         if Planning status is '04 - Pending'
+*                                         when user try to save decision point
+*                                         with Decision staus ZDS03 - submitted for approval
+**-------------------------------------------------------------------------------------
+*29.01.2026  DSDK9A07KC   #CHG0029188   Log Issue E457
+*                                       Call method ZCL_PPM_WORKFLOW=>GET_WORKFLOW_TYPE  to get workflow type,
+*                                       Then pass this workflow type to zcl_ppm_common=>wf_validate_user to
+*                                       get DoA list
+**------------------------------------------------------------------------------------
+***********************************************************************
+
+    CONSTANTS:lc_name TYPE tvarvc-name VALUE 'ZPPM_WF_AUTO_APPRV_AMT'.
+    DATA:   ls_msg                 TYPE symsg,
+            lr_message_handler_ppm TYPE REF TO /rpm/cl_message_handle,
+            lv_message             TYPE string.
+    DATA: lv_amt TYPE /rpm/v_fin_plan-amount.
+    DATA lv_amt_m TYPE /rpm/v_fin_plan-amount.
+    DATA lt_msg TYPE zppm_messages_struc_tt.
+    DATA l_cnt TYPE i.
+    DATA ls_context         TYPE /rpm/ts_object_hier.
+    DATA:lt_tmp_roles TYPE /rpm/tt_acl_roles,
+         lt_tmp_acls  TYPE /rpm/tt_aco_permissions.
+    DATA:lv_rc_tmp                 TYPE i.
+    DATA:lt_msg_tmp        TYPE /rpm/tt_messages,
+         ls_msg_tmp        TYPE /rpm/ts_messages,
+         ls_attributes_new TYPE zppm_tmp_001, " fix issue dump due to miss object zppm_tmp_001
+         ls_decision_tmp   TYPE rpm_ts_decision_int,
+         lv_gateno         TYPE zzgateno. " fix issue dump due to miss object zppm_tmp_001
+    DATA lt_dd07v TYPE STANDARD TABLE OF dd07v.
+    DATA lt_enq TYPE STANDARD TABLE OF seqg3.
+    DATA lv_prjid TYPE ps_pspid.
+*    CHECK is_attributes_new-status EQ 'ZDS03'
+*      AND zcl_ppm_common=>gv_ui_stat_chg = abap_true.
+
+* Beging of E076 - #DSDK993485#========================================================
+
+    IF is_attributes_new-status = 'ZDS11' OR is_attributes_new-status = 'ZDS04' OR is_attributes_new-status = 'ZDS09' .
+
+      SELECT SINGLE * FROM /rpm/item_d INTO @DATA(ls_item)
+                    WHERE guid = @is_attributes_new-item_guid.
+
+      SELECT SINGLE * FROM /rpm/decision INTO @DATA(ls_decision)
+      WHERE guid = @is_attributes_new-guid AND item_guid = @ls_item-guid AND decision_id = @is_attributes_new-decision_id.
+
+      IF sy-subrc IS INITIAL.
+
+        lv_gateno = is_attributes_new-decision_id+4(1).
+
+        SELECT SINGLE * FROM zppm040 INTO @DATA(ls_ppm040)
+          WHERE status = @is_attributes_new-status.
+
+        IF sy-subrc IS INITIAL.
+
+          MOVE-CORRESPONDING is_attributes_new TO ls_attributes_new.
+          SELECT SINGLE * FROM zppm039 INTO @DATA(ls_ppm09)
+          WHERE item_type = @ls_item-item_type AND zzgate_no = @lv_gateno.
+          IF sy-subrc IS INITIAL AND ls_decision-active = 'X'.
+
+            CALL FUNCTION 'ZPPM_FM_DP_STATUS_TMP' DESTINATION 'NONE'
+              EXPORTING
+                is_decision_stat = ls_attributes_new
+                iv_flag          = 'I'.
+
+            " close connection
+            CALL FUNCTION 'RFC_CONNECTION_CLOSE'
+              EXPORTING
+                destination          = 'NONE'
+              EXCEPTIONS
+                destination_not_open = 1
+                OTHERS               = 2.
+            IF sy-subrc <> 0.
+            ENDIF.
+            WAIT UP TO 3 SECONDS.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+*END OF E076 - - #DSDK993485# =========================================================
+    IF is_attributes_new-status EQ 'ZDS03'  AND
+       zcl_ppm_common=>gv_ui_stat_chg = abap_true.
+
+      SELECT SINGLE * FROM tvarvc INTO @DATA(l_tvarvc)
+                                WHERE name = @lc_name.
+      IF sy-subrc IS INITIAL.
+        lv_amt_m = l_tvarvc-low.
+      ENDIF.
+      lr_message_handler_ppm ?= /rpm/cl_message_handle=>get_instance( ).
+
+*     Get total cashflow based on GUID
+      CALL METHOD zcl_ppm_common=>get_approval_amt
+        EXPORTING
+          iv_guid   = is_attributes_new-guid
+        IMPORTING
+          ev_amount = lv_amt.
+
+* Begin of #DSDK992070  PPM_CRQ00000013195 - E0396  ------------------------------
+*        Prevent Gate 0 from being
+*       set to "Submitted for approval"
+*       when Cashflow is 0.
+
+      TRY.
+          IF is_attributes_new-decision_id EQ 'ZDP00'.
+            IF lv_amt IS INITIAL OR lv_amt = 0 OR lv_amt < 1.
+              rv_rc = 4.
+              MESSAGE e046(zppm) INTO lv_message.
+              MOVE-CORRESPONDING sy TO ls_msg.
+              CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                EXPORTING
+                  in_msg = ls_msg.
+            ENDIF.
+          ENDIF.
+        CATCH /rpm/cx_api_message_buffer.
+
+      ENDTRY.
+* End  of #DSDK992070  PPM_CRQ00000013195 - E0396  ------------------------------
+
+
+* Begin of #DSDK997076  PPM_CRQ00000013195 - E0417  ------------------------------
+* added on 24.01.2024
+* Prevent the workflow being triggered if Planning status is 'N/A' when the active gate is 2
+* if ZZPLANST = 03 And Active gate  = ZDP02 and Status = ZDS03
+* Update Ver 3 for item type Z003, Z004 by C90005555 on 31.07.2024
+      CLEAR: lv_message,ls_msg,ls_item.
+      SELECT SINGLE * FROM /rpm/item_d INTO @ls_item
+                           WHERE guid = @is_attributes_new-item_guid.
+      IF sy-subrc IS INITIAL.
+        IF ls_item-item_type = 'Z001' AND ( is_attributes_new-decision_id EQ 'ZDP02' OR is_attributes_new-decision_id EQ 'ZDP03' ).
+          IF ls_item-zzplanst = '03'."N/A
+            TRY.
+                rv_rc = 4.
+                MESSAGE e052(zppm) INTO lv_message.
+                MOVE-CORRESPONDING sy TO ls_msg.
+                CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                  EXPORTING
+                    in_msg = ls_msg.
+              CATCH /rpm/cx_api_message_buffer.
+
+            ENDTRY.
+          ENDIF.
+        ELSEIF ls_item-item_type = 'Z003' AND is_attributes_new-decision_id EQ 'ZDP03'.
+          IF ls_item-zzplanst = '03'."N/A
+            TRY.
+                rv_rc = 4.
+                MESSAGE e052(zppm) INTO lv_message.
+                MOVE-CORRESPONDING sy TO ls_msg.
+                CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                  EXPORTING
+                    in_msg = ls_msg.
+              CATCH /rpm/cx_api_message_buffer.
+
+            ENDTRY.
+          ENDIF.
+        ELSEIF ls_item-item_type = 'Z004' AND is_attributes_new-decision_id EQ 'ZDP03' .
+          IF ls_item-zzplanst = '03'."N/A
+            TRY.
+                rv_rc = 4.
+                MESSAGE e052(zppm) INTO lv_message.
+                MOVE-CORRESPONDING sy TO ls_msg.
+                CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                  EXPORTING
+                    in_msg = ls_msg.
+              CATCH /rpm/cx_api_message_buffer.
+
+            ENDTRY.
+          ENDIF.
+        ENDIF.
+
+      ENDIF.
+*    Commented out by Ver 3.0  ******************************************
+*    IF  is_attributes_new-decision_id EQ 'ZDP02'.
+*      CLEAR: lv_message,ls_msg,ls_item.
+*      SELECT SINGLE * FROM /rpm/item_d INTO @ls_item
+*                          WHERE guid = @is_attributes_new-item_guid.
+*      IF sy-subrc is INITIAL.
+*        IF ls_item-zzplanst = '03'."N/A
+*          TRY.
+*                 rv_rc = 4.
+*                 MESSAGE e052(zppm) INTO lv_message.
+*                 MOVE-CORRESPONDING sy TO ls_msg.
+*                 CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+*                   EXPORTING
+*                     in_msg = ls_msg.
+*          CATCH /rpm/cx_api_message_buffer.
+*
+*          ENDTRY.
+*        ENDIF.
+*      ENDIF.
+*
+*    ENDIF.
+*    End of Commented out by Ver 3.0 ******************************************
+* End  of #DSDK997076  PPM_CRQ00000013195 - E0417 ------------------------------
+
+* Begin of 31.12.2024  DSDK9A01PN -- E0441   Prevent the workflow being triggered***********************************
+*                                           if Planning status is '04 - Pending'
+*                                           when user try to save decision point
+*                                           with Decision staus ZDS03 - submitted for approval
+      IF ls_item IS NOT INITIAL.
+
+        CALL FUNCTION 'DD_DOMVALUES_GET'
+          EXPORTING
+            domname        = 'ZPLAN_STATUS'
+            text           = 'X'
+            langu          = 'E'
+*           BYPASS_BUFFER  = ' '
+*       IMPORTING
+*           RC             =
+          TABLES
+            dd07v_tab      = lt_dd07v
+          EXCEPTIONS
+            wrong_textflag = 1
+            OTHERS         = 2.
+        IF sy-subrc <> 0.
+* Implement suitable error handling here
+        ENDIF.
+
+        CLEAR: lv_message,ls_msg.
+        IF ls_item-zzplanst = '04'."Pending
+          TRY.
+              rv_rc = 4.
+              MESSAGE e053(zppm) INTO lv_message.
+              MOVE-CORRESPONDING sy TO ls_msg.
+              CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                EXPORTING
+                  in_msg = ls_msg.
+            CATCH /rpm/cx_api_message_buffer.
+
+          ENDTRY.
+        ENDIF.
+
+        IF  line_exists( lt_dd07v[ domvalue_l = ls_item-zzplanst ] ).
+        ELSE.
+          TRY.
+              rv_rc = 4.
+              MESSAGE e054(zppm) INTO lv_message.
+              MOVE-CORRESPONDING sy TO ls_msg.
+              CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                EXPORTING
+                  in_msg = ls_msg.
+            CATCH /rpm/cx_api_message_buffer.
+
+          ENDTRY.
+        ENDIF.
+      ENDIF.
+* End of  DSDK9A01PN    -- E0441************************************************************************************
+
+      IF zcl_ppm_common=>mt_wf_app_list IS INITIAL.
+
+*#****Begin of log issue 432 *********************************************
+        CLEAR: lv_message,ls_msg,ls_item.
+        SELECT SINGLE * FROM /rpm/item_d INTO @ls_item "Begin
+                            WHERE guid = @is_attributes_new-item_guid.
+*  lv_amt_m = ZPPM_WF_AUTO_APPRV_AMT shoulde be Zero
+*      IF lv_amt <= lv_amt_m
+*         AND is_attributes_new-decision_id EQ 'ZDP00'.
+        IF is_attributes_new-decision_id EQ 'ZDP00' AND ls_item-zzvbukr = '8000'.
+* ****End of log issue 432 *********************************************#
+        ELSE.
+          rv_rc = 4.
+          TRY.
+              MESSAGE e032(zppm) INTO lv_message.
+              MOVE-CORRESPONDING sy TO ls_msg.
+              CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                EXPORTING
+                  in_msg = ls_msg.
+*            MESSAGE e039(zppm) INTO lv_message.
+*            MOVE-CORRESPONDING sy TO ls_msg.
+*            CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+*              EXPORTING
+*                in_msg = ls_msg.
+*            MESSAGE e040(zppm) INTO lv_message.
+*            MOVE-CORRESPONDING sy TO ls_msg.
+*            CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+*              EXPORTING
+*                in_msg = ls_msg.
+*            MESSAGE e041(zppm) INTO lv_message.
+*            MOVE-CORRESPONDING sy TO ls_msg.
+*            CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+*              EXPORTING
+*                in_msg = ls_msg.
+            CATCH /rpm/cx_api_message_buffer.
+          ENDTRY.
+        ENDIF.
+      ENDIF.
+
+*<<<< Start of the change by C90005555 #DSDK9A07KC  #CHG0029188 - Log Issue 457---------------
+**------------------------------------------------------------------------------------
+
+      CALL METHOD zcl_ppm_workflow=>get_workflow_type
+        EXPORTING
+          is_decision_new =  is_attributes_new
+          is_decision_old =  is_attributes_old
+        IMPORTING
+          ev_zcategory       = DATA(lv_zcategory)    " Category
+          et_msg            = DATA(lt_msg_category)    " Error Messages
+        .
+*>>>> End of change by C90005555 #DSDK9A07KC  #CHG0029188- Log Issue 457----------------
+
+      CALL METHOD zcl_ppm_common=>wf_validate_user
+        EXPORTING
+          it_wf_list    = zcl_ppm_common=>mt_wf_app_list
+          iv_guid       = is_attributes_new-guid
+          iv_zcategory  = lv_zcategory "Added by C90005555 #DSDK9A07KC  #CHG0029188
+        IMPORTING
+          et_msg     = lt_msg.
+
+      LOOP AT lt_msg INTO DATA(ls_msg_t).
+        rv_rc = 4.
+        TRY.
+            .
+
+**          MESSAGE e035(zppm) INTO ls_msg_t-message.
+*          ls_msg-msgty = 'E'.
+*          ls_msg-msgid = 'ZPPM'.
+*          ls_msg-msgno = '035'.
+*          CALL METHOD zcl_ppm_common=>split_message_into_vars
+*            EXPORTING
+*              message_text = ls_msg_t-message
+*            IMPORTING
+*              msgv1        = ls_msg-msgv1
+*              msgv2        = ls_msg-msgv2
+*              msgv3        = ls_msg-msgv3
+*              msgv4        = ls_msg-msgv4.
+
+*          MOVE-CORRESPONDING sy TO ls_msg.
+            CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message
+              EXPORTING
+                in_message_type = 'E'
+                in_message_text = ls_msg_t-message.
+          CATCH /rpm/cx_api_message_buffer.
+        ENDTRY.
+
+      ENDLOOP.
+
+
+      LOOP AT zcl_ppm_common=>mt_wf_app_list ASSIGNING FIELD-SYMBOL(<ls_wf>).
+        CLEAR l_cnt.
+        IF <ls_wf>-bname IS INITIAL.
+          rv_rc = 4.
+          TRY.
+              MESSAGE e032(zppm) INTO lv_message.
+              MOVE-CORRESPONDING sy TO ls_msg.
+              CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                EXPORTING
+                  in_msg = ls_msg.
+*            MESSAGE e039(zppm) INTO lv_message.
+*            MOVE-CORRESPONDING sy TO ls_msg.
+*            CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+*              EXPORTING
+*                in_msg = ls_msg.
+*            MESSAGE e040(zppm) INTO lv_message.
+*            MOVE-CORRESPONDING sy TO ls_msg.
+*            CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+*              EXPORTING
+*                in_msg = ls_msg.
+*            MESSAGE e041(zppm) INTO lv_message.
+*            MOVE-CORRESPONDING sy TO ls_msg.
+*            CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+*              EXPORTING
+*                in_msg = ls_msg.
+            CATCH /rpm/cx_api_message_buffer.
+          ENDTRY.
+          EXIT.
+
+        ELSE.
+
+          LOOP AT zcl_ppm_common=>mt_wf_app_list INTO DATA(ls_list)
+                                      WHERE seqno = <ls_wf>-seqno
+                                      AND   bname = <ls_wf>-bname.
+            l_cnt = l_cnt + 1.
+          ENDLOOP.
+
+          IF l_cnt > 1.
+            rv_rc = 4.
+            TRY.
+                MESSAGE e037(zppm) INTO lv_message.
+                MOVE-CORRESPONDING sy TO ls_msg.
+                CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                  EXPORTING
+                    in_msg = ls_msg.
+              CATCH /rpm/cx_api_message_buffer.
+            ENDTRY.
+            EXIT.
+          ENDIF.
+
+          DATA(lv_userinfo) =    zcl_ppm_common=>get_user_info( ov_user = <ls_wf>-bname ).
+          IF lv_userinfo IS INITIAL.
+            rv_rc = 4.
+            TRY.
+                MESSAGE e034(zppm) INTO lv_message.
+                MOVE-CORRESPONDING sy TO ls_msg.
+                CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                  EXPORTING
+                    in_msg = ls_msg.
+              CATCH /rpm/cx_api_message_buffer.
+            ENDTRY.
+            EXIT.
+          ELSE.
+            <ls_wf>-apprname = lv_userinfo-name.
+          ENDIF.
+          CLEAR lv_userinfo.
+        ENDIF.
+      ENDLOOP.
+* Begin of Log issue 4444 - Decision point approver list refresh
+
+      CALL METHOD zcl_ppm_common=>get_last_approvers_wf
+        EXPORTING
+          iv_guid   = is_attributes_new-guid
+          iv_status = is_attributes_new-status
+          iv_zcategory = lv_zcategory "DSDK9A07KC#
+        IMPORTING
+          et_wf_rule = DATA(lt_wf_rule)  .
+      IF lt_wf_rule IS NOT INITIAL.
+        IF <ls_wf> IS ASSIGNED.
+          UNASSIGN <ls_wf>.
+        ENDIF.
+        LOOP AT zcl_ppm_common=>mt_wf_app_list ASSIGNING <ls_wf>.
+         IF line_exists( lt_wf_rule[  seqno = <ls_wf>-seqno parvw = <ls_wf>-parvw ] ).
+         ELSE.
+             rv_rc = 4.
+            TRY.
+                MESSAGE e056(zppm) INTO lv_message.
+                MOVE-CORRESPONDING sy TO ls_msg.
+                CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                  EXPORTING
+                    in_msg = ls_msg.
+              CATCH /rpm/cx_api_message_buffer.
+            ENDTRY.
+            EXIT.
+         ENDIF.
+        ENDLOOP.
+      ENDIF.
+
+* End of Log issue 4444 - Decision point approver list refresh
+      CALL METHOD zcl_ppm_common=>validate_ppm_item
+        EXPORTING
+          iv_guid = is_attributes_new-guid
+        IMPORTING
+          ev_rc   = DATA(lv_rc).
+
+      IF lv_rc IS NOT INITIAL.
+        rv_rc = 4.
+        TRY.
+            MESSAGE e036(zppm) INTO lv_message.
+            MOVE-CORRESPONDING sy TO ls_msg.
+            CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+              EXPORTING
+                in_msg = ls_msg.
+          CATCH /rpm/cx_api_message_buffer.
+        ENDTRY.
+        EXIT.
+      ENDIF.
+
+      " fetch roles and if already exist then throw
+      " error message
+      CALL METHOD cl_rpm_language_buffer=>convert_langu_to_laiso
+        EXPORTING
+          iv_langu    = sy-langu
+        RECEIVING
+          rv_language = DATA(lv_lang).
+
+      SELECT SINGLE * FROM /rpm/item_d INTO @ls_item
+                          WHERE guid = @is_attributes_new-item_guid.
+
+      ls_context-object_type = /rpm/cl_co=>sc_item.
+      ls_context-object_guid = ls_item-guid.
+      ls_context-portfolio_guid = ls_item-portfolio_guid.
+
+      CALL FUNCTION '/RPM/ACL_DISPLAY'
+        EXPORTING
+          is_context   = ls_context
+          iv_edit_mode = /rpm/cl_co=>sc_edit_mode_display
+          iv_language  = lv_lang
+        IMPORTING
+          et_acl       = lt_tmp_acls
+          et_acl_roles = lt_tmp_roles
+          ev_rc        = lv_rc_tmp
+          et_msg       = lt_msg_tmp.
+
+      IF  lt_tmp_roles IS NOT INITIAL.
+        rv_rc = 4.
+        TRY.
+            MESSAGE e042(zppm) INTO lv_message.
+            MOVE-CORRESPONDING sy TO ls_msg.
+            CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+              EXPORTING
+                in_msg = ls_msg.
+          CATCH /rpm/cx_api_message_buffer.
+        ENDTRY.
+        EXIT.
+      ENDIF.
+*  Begin of log issue 442 -   Check WF issue gate 4,5,6 task TS9000125
+       CALL FUNCTION 'ENQUE_READ'
+       EXPORTING
+         gclient       = sy-mandt
+         gname         = 'PROJ_ENQ'
+*         GARG          = ' '
+         guname        = '*'
+        TABLES
+          enq           =  lt_enq.
+
+
+      IF lt_enq IS NOT INITIAL.
+         DELETE lt_enq WHERE gmode NE 'E'.
+        TRY.
+         LOOP AT lt_enq INTO DATA(ls_enqu).
+            lv_prjid = ls_enqu-garg+4(8).
+            CALL FUNCTION 'CONVERSION_EXIT_ABPSN_OUTPUT'
+              EXPORTING
+                input        = lv_prjid
+             IMPORTING
+               output        = lv_prjid.
+            IF lv_prjid = ls_item-external_id.
+               rv_rc = 4.
+               MESSAGE e055(zppm) WITH lv_prjid ls_enqu-guname   INTO lv_message.
+               MOVE-CORRESPONDING sy TO ls_msg.
+               CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message_symsg
+                 EXPORTING
+                   in_msg = ls_msg.
+               EXIT.
+            ENDIF.
+          ENDLOOP.
+          CATCH /rpm/cx_api_message_buffer.
+        ENDTRY.
+        EXIT.
+      ENDIF.
+*  End of log issue 442 -   Check WF issue gate 4,5,6 task TS9000125
+    ENDIF.
+* Commented out by C90005556 - Log issue E0268 24.02.2025 ----<<<<
+*~~ begin of change : C90005911 : 13th July
+* Commented out by C90005555 to resolve the dump error in production
+* due to missing object zppm041. this enhancement belongs to E0268
+*which was not approved to transport to Production
+*IF  is_attributes_new-status = 'ZDS11'.
+*
+*    SELECT SINGLE username FROM zppm041 INTO @DATA(lv_username)
+*                                       WHERE username = @sy-uname
+*                                         AND active = @abap_true.
+*
+*        IF sy-subrc <> 0.
+*                   rv_rc = 4.
+*                TRY.
+*                  lr_message_handler_ppm ?= /rpm/cl_message_handle=>get_instance( ).
+*                  MESSAGE e051(zppm) INTO lv_message.
+*                  MOVE-CORRESPONDING sy TO ls_msg.
+*
+*                  CALL METHOD lr_message_handler_ppm->/rpm/if_message_buffer~add_process_message
+*                    EXPORTING
+*                      in_message_type = 'E'
+*                      in_message_text = lv_message.
+*
+*                CATCH /rpm/cx_api_message_buffer.
+*                ENDTRY.
+*         ENDIF.
+* ENDIF.
+*~~ end of change : C90005911 : 13th July
+* Commented out by C90005556 - Log issue E0268 24.02.2025 ---->>>
+  ENDMETHOD.
+ENDCLASS.
