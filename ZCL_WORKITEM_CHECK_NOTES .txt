@@ -1,0 +1,169 @@
+class ZCL_WORKITEM_CHECK_NOTES definition
+  public
+  final
+  create public .
+
+public section.
+
+  interfaces IF_SWF_IFS_WORKITEM_EXIT .
+protected section.
+private section.
+
+  data WI_CONTEXT type ref to IF_WAPI_WORKITEM_CONTEXT .
+ENDCLASS.
+
+
+
+CLASS ZCL_WORKITEM_CHECK_NOTES IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_WORKITEM_CHECK_NOTES->IF_SWF_IFS_WORKITEM_EXIT~EVENT_RAISED
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IM_EVENT_NAME                  TYPE        SWW_EVTTYP
+* | [--->] IM_WORKITEM_CONTEXT            TYPE REF TO IF_WAPI_WORKITEM_CONTEXT
+* | [!CX!] CX_SWF_IFS_WORKITEM_EXIT_ERROR
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD if_swf_ifs_workitem_exit~event_raised.
+
+*    declare the local data used in the class.
+
+    DATA: lcl_wihead       TYPE swr_wihdr, "Work Item Structure.
+          lw_container     TYPE swr_cont, "Container fields-value
+          it_container     TYPE STANDARD TABLE OF  swr_cont,
+          lc_wf_container  TYPE REF TO if_swf_ifs_parameter_container,
+          lc_wi_container  TYPE REF TO if_swf_ifs_parameter_container,
+          lv_text_entered  TYPE flag,
+          lv_result        TYPE char4,
+          lv_workitemid    TYPE sibflporb,
+          lv_psww_wiid     TYPE sww_wiid,
+          lv_csww_wiid     TYPE sww_wiid,
+          lv_decision_note TYPE swrsobjid,
+          lt_decision_note TYPE swfborptab,
+          lv_portal        TYPE xfeld,
+          lv_aprrej        TYPE xfeld,
+          lv_status        TYPE xfeld,
+          lv_subrc         TYPE subrc,
+          lv_note          TYPE sibflporbt,
+          lv_msgtype       TYPE msgty,
+          lv_direct        TYPE char6,
+          lv_objid         TYPE actorid,
+          lv_message       TYPE string.
+    DATA lv_document_id TYPE sofolenti1-doc_id.
+    DATA lt_object_content TYPE TABLE OF solisti1.
+* Local Constant:
+
+    CONSTANTS: lc_e    TYPE enqmode VALUE 'E'..
+
+* Get Header details of Context for Work Item.
+    me->wi_context = im_workitem_context.
+
+    CASE im_event_name.
+      WHEN swrco_event_after_execution ."'AFT_EXEC'.
+* Call the header method to get the workitem data.
+
+*        CALL METHOD wi_context->get_header
+*          RECEIVING
+*            re_workitem_header = lcl_wihead.
+
+* Workflow interface to read the container.
+
+*        CALL FUNCTION 'SAP_WAPI_READ_CONTAINER'
+*          EXPORTING
+*            workitem_id      = lcl_wihead-wi_id
+*            language         = sy-langu
+*            user             = sy-uname
+*          TABLES
+*            simple_container = it_container.
+
+*        CLEAR: lw_container.
+
+
+
+
+*     Get the sales order number and item number
+        CALL METHOD im_workitem_context->get_wf_container
+          RECEIVING
+            re_container = lc_wf_container.
+
+
+*     Get the User decision
+        CALL METHOD im_workitem_context->get_wi_container
+          RECEIVING
+            re_container = lc_wi_container.
+
+        TRY.
+*           User decision
+            CALL METHOD lc_wi_container->get
+              EXPORTING
+                name  = '_WI_RESULT'
+              IMPORTING
+                value = lv_result.
+          CATCH cx_swf_cnt_elem_not_found .
+          CATCH cx_swf_cnt_elem_type_conflict .
+          CATCH cx_swf_cnt_unit_type_conflict .
+          CATCH cx_swf_cnt_container .
+        ENDTRY.
+
+
+*       User decision
+        CASE lv_result.
+          WHEN '0001'.
+            lv_aprrej = 'A'. "Approved
+          WHEN '0002'.
+            lv_aprrej = 'R'. "Rejected
+          WHEN OTHERS.
+        ENDCASE.
+
+        IF lv_aprrej EQ 'R'.
+
+          TRY.
+*           User decision
+              CALL METHOD lc_wi_container->get
+                EXPORTING
+                  name  = 'DECISION_NOTE'
+                IMPORTING
+                  value = lv_note.
+            CATCH cx_swf_cnt_elem_not_found .
+            CATCH cx_swf_cnt_elem_type_conflict .
+            CATCH cx_swf_cnt_unit_type_conflict .
+            CATCH cx_swf_cnt_container .
+          ENDTRY.
+
+          READ TABLE lv_note INTO DATA(ls_note) INDEX 1.
+          IF sy-subrc IS INITIAL.
+
+* IF FOUND READ DATA OF NOTE CONTENT ENTERED BY USER
+            lv_document_id = ls_note-instid.
+
+            CALL FUNCTION 'SO_DOCUMENT_READ_API1'
+              EXPORTING
+                document_id    = lv_document_id
+              TABLES
+                object_content = lt_object_content
+              EXCEPTIONS
+                OTHERS         = 1.
+            CLEAR lv_text_entered.
+            LOOP AT lt_object_content INTO DATA(ls_object_content).
+              REPLACE ALL OCCURRENCES OF '000' IN ls_object_content-line WITH space.
+              REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>newline IN ls_object_content-line WITH space.
+              CONDENSE ls_object_content-line.
+              IF ls_object_content-line NE space.
+                lv_text_entered = 'X'.
+                EXIT.
+              ENDIF.
+            ENDLOOP.
+
+            IF lv_text_entered NE 'X'.
+              MESSAGE e000(zsd) WITH 'Rejection notes is mandatory'.
+            ENDIF.
+          ELSE.
+            MESSAGE e000(zsd) WITH 'Rejection notes is mandatory'.
+          ENDIF.
+        ENDIF.
+
+      WHEN OTHERS.
+    ENDCASE.
+
+  ENDMETHOD.
+ENDCLASS.
