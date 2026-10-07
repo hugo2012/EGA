@@ -1,0 +1,2308 @@
+class ZCL_IM_APREQUEST_UPDATE definition
+  public
+  final
+  create public .
+
+*"* public components of class ZCL_IM_APREQUEST_UPDATE
+*"* do not include other source files here!!!
+public section.
+
+  interfaces IF_EX_APPREQUEST_UPDATE .
+
+  types:
+    ty_level_tab TYPE STANDARD TABLE OF numc2 WITH EMPTY KEY .
+
+  class-methods CHANGE_PARTNER
+    changing
+      !XIHPA type TT_IHPAVB .
+  class-methods CONVERT_AMT_USD
+    importing
+      !I_AMOUNT type ANY optional
+      !I_CURRENCY type ANY optional
+    exporting
+      !E_AMOUNT type BP_WGT .
+  class-methods GET_RULE_DETTAILS
+    importing
+      value(I_RULE_ID) type HR_SOBJID default '90000054'
+    exporting
+      value(T_PTNR_CHECKS) type ZFI_AR_PATNR_CHKS_TBL .
+  class-methods GET_USER_INFO
+    importing
+      value(I_USERID) type USRID optional
+    exporting
+      value(E_GRADE) type CHAR3
+      value(E_KOSTL) type KOSTL
+      value(E_PERNR) type PERNR_D
+      value(E_PLANS) type PLANS .
+  class-methods USER_GRADE_CHECK_WITH_LEVEL
+    importing
+      value(I_USER) type USRID optional
+      value(I_KOSTL) type KOSTL optional
+      value(I_TRFST) type ZHR_RANGE_TRFST
+      value(I_LEVEL) type NUMC2
+      value(I_HEIR) type CHAR1
+      value(I_IMUSER) type USRID optional
+      value(IR_LEVEL) type ZHR_RANGE_LEVEL optional
+    exporting
+      value(E_INVALID) type CHAR1
+      value(E_RETURN) type ZFI_AR_MESSAGES_STRUC .
+  class-methods GET_COSTCENTER_OWNER
+    importing
+      value(I_KOSTL) type KOSTL optional
+    exporting
+      value(E_CCOWNER) type USRID
+      value(E_RETURN) type ZFI_AR_MESSAGES_STRUC
+      value(E_INVALID) type CHAR1
+      value(E_PERNR) type PERNR_D
+      value(E_PLANS) type PLANS .
+  class-methods GET_EMP_ORG_LEVEL
+    importing
+      !I_PERNR type PERNR_D
+    exporting
+      !E_LEVEL type TY_LEVEL_TAB .
+  class-methods VALIDATE_USER
+    importing
+      value(I_PARTNER) type RIHPATAB optional
+      value(I_MASTER_DATA) type RIMAK optional
+      value(I_INVESTMENT_PROGRAM) type BADIAPPREQ_PROGALLOCTAB optional
+      value(I_IMAKPA) type IMAKPA optional
+      !I_INVESTMENT_REASON type RIMAKPITAB optional
+      !I_AKTYP type AKTYP optional
+    exporting
+      value(E_INVALID) type CHAR1
+      value(E_RETURN) type ZFI_AR_MESSAGES_STRUC .
+  class-methods CHECK_EMP_IN_CC_STRUC
+    importing
+      value(I_USERPOS) type PLANS optional
+      value(I_CCOWNPOS) type PLANS optional
+    exporting
+      value(E_INVALID) type CHAR1 .
+  class-methods FETCH_DIRECT_MANAGER
+    importing
+      !I_PERNR type PERSNO optional
+      !I_PLANS type PLANS optional
+    exporting
+      !E_MANAGER type PERNR_D
+      !E_EMAIL type COMM_ID_LONG
+      !E_NAME type EMNAM
+      !E_ID type SYSID .
+  class-methods GET_EID
+    importing
+      !I_PERSON type PERSNO optional
+    returning
+      value(USRID) type SY-UNAME .
+  class-methods GET_PARTNERTEXT
+    importing
+      !I_PARVW type PARVW optional
+    returning
+      value(R_VTEXT) type VTXTK .
+  PROTECTED SECTION.
+*"* protected components of class ZCL_IM_APREQUEST_UPDATE
+*"* do not include other source files here!!!
+  PRIVATE SECTION.
+*"* private components of class ZCL_IM_APREQUEST_UPDATE
+*"* do not include other source files here!!!
+
+    METHODS validate_ey_appr_req
+      IMPORTING
+        !i_posnr_ey       TYPE ima_posnr
+        !i_ximak          TYPE imak
+        !i_ey_approve_chk TYPE char1 OPTIONAL
+        !i_limit_exceed   TYPE char1 OPTIONAL
+        !t_raia9          TYPE zim_raia9_ty OPTIONAL
+      EXPORTING
+        !e_subrc          TYPE sy-subrc .
+    METHODS __change_partner
+      IMPORTING
+        !aktyp              TYPE aktyp
+        !master_data        TYPE rimak
+        !investment_program TYPE badiappreq_progalloctab
+        !partner            TYPE rihpatab
+        !apprequest_status  TYPE tbapiappreqstatus .
+    METHODS __get_status
+      IMPORTING
+        !master_data         TYPE rimak
+      RETURNING
+        VALUE(partner_check) TYPE char1 .
+    METHODS __raise_cost_message
+      IMPORTING
+        !aktyp             TYPE aktyp
+        !master_data       TYPE rimak
+        !apprequest_status TYPE tbapiappreqstatus
+        !variants          TYPE rimavtab OPTIONAL
+        !i_totvalue        TYPE invkos OPTIONAL
+      EXCEPTIONS
+        error_with_message
+        warning_with_message .
+    METHODS __raise_message
+      IMPORTING
+        !aktyp             TYPE aktyp
+        !master_data       TYPE rimak
+        !apprequest_status TYPE tbapiappreqstatus
+      EXCEPTIONS
+        error_with_message .
+ENDCLASS.
+
+
+
+CLASS ZCL_IM_APREQUEST_UPDATE IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>CHANGE_PARTNER
+* +-------------------------------------------------------------------------------------------------+
+* | [<-->] XIHPA                          TYPE        TT_IHPAVB
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD change_partner.
+* This is method will be called from implicit enhancement
+* This method is responsible to change YS partner id based on
+* position id
+* CRQ No: 28668
+* Transport No 943978
+    DATA: lv_fname TYPE string VALUE '(SAPLAIA1)RAIP1'.
+    DATA: lv_tabix TYPE sy-tabix.
+    DATA: lv_parnr TYPE i_parnr.
+    DATA: lwa_xihpa LIKE LINE OF xihpa.
+    DATA: lt_pos_partner  TYPE STANDARD TABLE OF zim_pos_partner,
+          lwa_pos_partner TYPE zim_pos_partner.
+    FIELD-SYMBOLS: <fs_raip1> TYPE raip1.
+* Fetch Position id
+    ASSIGN (lv_fname) TO <fs_raip1>.
+    CHECK <fs_raip1> IS ASSIGNED.
+* Fetch Parnter maintained in Position id
+    SELECT * FROM zim_pos_partner
+      INTO TABLE lt_pos_partner
+     WHERE posid EQ <fs_raip1>-posid
+       AND zim_rectype EQ 'D'.
+* "Check whether any default partner maintained in DB table
+    CHECK lt_pos_partner IS NOT INITIAL.
+* " Change Partner if its not matched with default partner
+    LOOP AT xihpa INTO lwa_xihpa.
+      lv_tabix = sy-tabix.
+      READ TABLE lt_pos_partner INTO lwa_pos_partner
+                            WITH KEY patner = lwa_xihpa-parvw.
+      CHECK sy-subrc EQ 0.
+      CHECK lwa_xihpa-parnr NE lwa_pos_partner-parnr.
+      lwa_xihpa-parnr = lwa_pos_partner-parnr.
+      MODIFY xihpa FROM lwa_xihpa INDEX lv_tabix TRANSPORTING parnr.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>CHECK_EMP_IN_CC_STRUC
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_USERPOS                      TYPE        PLANS(optional)
+* | [--->] I_CCOWNPOS                     TYPE        PLANS(optional)
+* | [<---] E_INVALID                      TYPE        CHAR1
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD check_emp_in_cc_struc.
+
+
+    DATA: lv_plans       TYPE plans,
+          lt_struc       TYPE STANDARD TABLE OF struc,
+          lwa_struc      TYPE struc,
+          lv_mdceo       TYPE usrid,
+          lv_ceoplans    TYPE plans,
+          p_result_tab   TYPE STANDARD TABLE OF swhactor,
+          lwa_result_tab TYPE swhactor.
+
+
+*   Fetch reporting strcuture
+    CALL FUNCTION 'RH_STRUC_GET'
+      EXPORTING
+        act_otype       = 'S'
+        act_objid       = i_ccownpos
+        act_wegid       = 'A002'
+        act_plvar       = '01'
+        act_begda       = sy-datum
+        act_endda       = sy-datum
+        authority_check = ''
+      TABLES
+        result_tab      = p_result_tab
+        result_struc    = lt_struc
+      EXCEPTIONS
+        no_plvar_found  = 1
+        no_entry_found  = 2
+        OTHERS          = 3.
+    IF sy-subrc EQ 0.
+      APPEND VALUE #( otype = 'S' objid = i_ccownpos ) TO p_result_tab.
+      READ TABLE p_result_tab TRANSPORTING NO FIELDS WITH KEY otype = 'S'
+                                                              objid = i_userpos.
+      IF sy-subrc NE 0.
+        REFRESH : lt_struc, p_result_tab.
+        CALL FUNCTION 'RH_STRUC_GET'
+          EXPORTING
+            act_otype       = 'S'
+            act_objid       = i_ccownpos
+            act_wegid       = 'B002'
+            act_plvar       = '01'
+            act_begda       = sy-datum
+            act_endda       = sy-datum
+            authority_check = ''
+          TABLES
+            result_tab      = p_result_tab
+            result_struc    = lt_struc
+          EXCEPTIONS
+            no_plvar_found  = 1
+            no_entry_found  = 2
+            OTHERS          = 3.
+        IF sy-subrc EQ 0.
+          APPEND VALUE #( otype = 'S' objid = i_ccownpos ) TO p_result_tab.
+          READ TABLE p_result_tab TRANSPORTING NO FIELDS WITH KEY otype = 'S'
+                                                                  objid = i_userpos.
+          IF sy-subrc NE 0.
+            e_invalid = 'X'.
+          ENDIF.
+        ELSE.
+          e_invalid = 'X'.
+        ENDIF.
+      ENDIF.
+    ELSE.                   "CRQ000000130807
+       e_invalid = 'X'.     "CRQ000000130807
+    ENDIF.                  "CRQ000000130807
+
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>CONVERT_AMT_USD
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_AMOUNT                       TYPE        ANY(optional)
+* | [--->] I_CURRENCY                     TYPE        ANY(optional)
+* | [<---] E_AMOUNT                       TYPE        BP_WGT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD convert_amt_usd.
+* This Method is responsible to change amount to USD
+
+    DATA: lv_twaer     TYPE twaer,
+          lv_usd_twaer TYPE twaer VALUE 'USD',
+          lv_wtges     TYPE bp_wgt.
+    CHECK i_amount IS NOT INITIAL AND i_currency IS NOT INITIAL.
+    lv_wtges = i_amount.
+    lv_twaer = i_currency.
+
+    CALL FUNCTION 'CONVERT_TO_LOCAL_CURRENCY'
+      EXPORTING
+        client           = sy-mandt
+        date             = sy-datum
+        foreign_amount   = lv_wtges
+        foreign_currency = lv_twaer
+        local_currency   = lv_usd_twaer
+        type_of_rate     = 'M'
+        read_tcurr       = 'X'
+      IMPORTING
+        local_amount     = e_amount
+      EXCEPTIONS
+        no_rate_found    = 1
+        overflow         = 2
+        no_factors_found = 3
+        no_spread_found  = 4
+        derived_2_times  = 5
+        OTHERS           = 6.
+    IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>FETCH_DIRECT_MANAGER
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_PERNR                        TYPE        PERSNO(optional)
+* | [--->] I_PLANS                        TYPE        PLANS(optional)
+* | [<---] E_MANAGER                      TYPE        PERNR_D
+* | [<---] E_EMAIL                        TYPE        COMM_ID_LONG
+* | [<---] E_NAME                         TYPE        EMNAM
+* | [<---] E_ID                           TYPE        SYSID
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD fetch_direct_manager.
+    DATA: lv_plans TYPE plans,
+          lv_sobid TYPE sobid.
+    lv_plans = i_plans.
+    IF lv_plans IS INITIAL.
+      SELECT SINGLE plans
+             FROM pa0001
+             INTO lv_plans
+             WHERE pernr = i_pernr
+             AND begda LE sy-datum
+             AND endda GE sy-datum.
+    ENDIF.
+
+*    "Fill Reporting Position
+      SELECT SINGLE sobid INTO lv_sobid
+        FROM hrp1001
+       WHERE otype = 'S'
+         AND objid = lv_plans
+         AND plvar = '01'
+         AND rsign = 'A'
+         AND relat = '002'
+         AND istat = '1'
+         AND begda LE sy-datum
+         AND endda GE sy-datum
+         AND sclas = 'S'.
+      IF sy-subrc EQ 0.
+*      "Call Manager
+        SELECT SINGLE objid
+         FROM hrp1001
+         INTO e_manager
+        WHERE otype EQ 'P'
+          AND plvar EQ '01'
+          AND rsign EQ 'B'
+          AND relat EQ '008'
+          AND begda LE sy-datum                    " DSDK950519
+          AND endda GE sy-datum                  " DSDK950519
+          AND sclas EQ 'S'
+          AND sobid EQ lv_sobid.
+        IF sy-subrc EQ 0.
+          IF e_name IS REQUESTED.
+            SELECT SINGLE ename
+              FROM pa0001
+              INTO e_name
+             WHERE pernr EQ e_manager
+               AND begda LE sy-datum
+               AND endda GE sy-datum.
+          ENDIF.
+          IF e_email IS REQUESTED.
+            e_email = zcl_dms_wfutil=>fetch_emp_mail( e_manager ).
+          ENDIF.
+          IF e_id IS REQUESTED.
+            e_id =  get_eid( e_manager ).
+          ENDIF.
+          EXIT.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ELSE.
+        EXIT.
+      ENDIF.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>GET_COSTCENTER_OWNER
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_KOSTL                        TYPE        KOSTL(optional)
+* | [<---] E_CCOWNER                      TYPE        USRID
+* | [<---] E_RETURN                       TYPE        ZFI_AR_MESSAGES_STRUC
+* | [<---] E_INVALID                      TYPE        CHAR1
+* | [<---] E_PERNR                        TYPE        PERNR_D
+* | [<---] E_PLANS                        TYPE        PLANS
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_costcenter_owner.
+
+    TYPES: BEGIN OF ty_approver,
+             pernr    TYPE persno,
+             plans    TYPE plans,
+             trfgr    TYPE trfgr,
+             usrid    TYPE sysid,
+             trfst    TYPE trfst,
+             replevel TYPE i,
+           END OF ty_approver.
+
+    DATA: lv_uname    TYPE bapiusr01-uname,
+          lv_pernr    TYPE bapiusr01-employeeno,
+          it_approver TYPE STANDARD TABLE OF ty_approver.
+
+    SELECT SINGLE * FROM csks
+       INTO @DATA(ls_csks)
+      WHERE kostl EQ @i_kostl
+        AND datbi GE @sy-datum
+        AND datab LE @sy-datum.
+    IF sy-subrc EQ 0.
+      lv_uname = ls_csks-verak_user.
+      CALL FUNCTION 'BAPI_USR01DOHR_GETEMPLOYEE'
+        EXPORTING
+          id             = lv_uname
+        IMPORTING
+          employeenumber = lv_pernr.
+      IF lv_pernr IS NOT INITIAL.
+        e_pernr = lv_pernr.
+        SELECT SINGLE * FROM pa0000
+          INTO @DATA(ls_pa0000)
+         WHERE pernr EQ @lv_pernr
+           AND begda LE @sy-datum
+           AND endda GE @sy-datum
+           AND stat2 EQ '3'.
+        IF sy-subrc NE 0.
+          CLEAR: lv_uname, e_pernr.
+        ELSE.
+          e_ccowner = ls_csks-verak_user.
+          SELECT SINGLE plans FROM pa0001
+            INTO e_plans
+           WHERE pernr EQ lv_pernr
+             AND begda LE sy-datum
+             AND endda GE sy-datum.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+    IF lv_uname IS INITIAL.
+      e_invalid = 'X'.
+      e_return-message = |Cost Center Owner Not Active/Doesn't Exists for CC { i_kostl }|.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>GET_EID
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_PERSON                       TYPE        PERSNO(optional)
+* | [<-()] USRID                          TYPE        SY-UNAME
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_eid.
+    DATA: lv_usrid TYPE sysid.
+    SELECT SINGLE usrid
+     INTO lv_usrid
+     FROM pa0105
+    WHERE pernr EQ i_person
+      AND subty EQ '0001'
+      AND endda GE sy-datum
+      AND begda LE sy-datum.
+    IF sy-subrc EQ 0.
+      usrid = lv_usrid.
+    ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>GET_EMP_ORG_LEVEL
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_PERNR                        TYPE        PERNR_D
+* | [<---] E_LEVEL                        TYPE        TY_LEVEL_TAB
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_emp_org_level.
+
+*----------------------------------------------------------------------*
+* Change History:                                                      *
+* ---------------                                                      *
+*Ver     Date         UserID       TransportNo  Description            *
+*V1.0   07.07.2026    C90007337    DSDK9A0CZO   Enhancement to Approver*
+*                                             Level Determination Logic*
+*V2.0   08.07.2026    C90007337    DSDK9A0D1T  Enhancement to Approver *
+*                                             Determination Logic Level*
+*V3.0   14.07.2026   C90007337     DSDK9A0D4A Enhancement to Approver  *
+*                                             Determination Logic Level*                                               *
+*----------------------------------------------------------------------*
+
+    DATA: lv_plans       TYPE plans,
+          lt_struc       TYPE STANDARD TABLE OF struc,
+          lwa_struc      TYPE struc,
+          lv_mdceo       TYPE usrid,
+          lv_ceoplans    TYPE plans,
+          p_result_tab   TYPE STANDARD TABLE OF swhactor,
+          lwa_result_tab TYPE swhactor.
+**Begin of Change by C90007337 on 06.07.2026 CHG0032626
+    DATA:lt_mdceo TYPE STANDARD TABLE OF zps_arpartner-parnr.
+**End of Change by C90007337 on 06.07.2026 CHG0032626
+    DATA: lv_level TYPE numc2. "Added by C90007337 on 08.07.2026 CHG0032687
+
+*   Get position for pernr
+    SELECT SINGLE plans
+       INTO lv_plans
+       FROM pa0001
+      WHERE pernr EQ i_pernr
+        AND endda GE sy-datum
+        AND begda LE sy-datum.
+
+    IF sy-subrc EQ 0.
+*     Fetch reporting strcuture
+      CALL FUNCTION 'RH_STRUC_GET'
+        EXPORTING
+          act_otype       = 'S'
+          act_objid       = lv_plans "wa_holder_pos-tobid
+          act_wegid       = 'A002'
+          act_plvar       = '01'
+          act_begda       = sy-datum
+          act_endda       = sy-datum
+          authority_check = ''
+        TABLES
+          result_tab      = p_result_tab
+          result_struc    = lt_struc
+        EXCEPTIONS
+          no_plvar_found  = 1
+          no_entry_found  = 2
+          OTHERS          = 3.
+      IF sy-subrc <> 0.
+*       MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*               WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+      ENDIF.
+*     Include enter user position.
+      REFRESH  p_result_tab[].
+      LOOP AT lt_struc INTO lwa_struc.
+        CLEAR: lwa_result_tab.
+        lwa_result_tab-otype = lwa_struc-otype.
+        lwa_result_tab-objid = lwa_struc-objid.
+        APPEND lwa_result_tab TO p_result_tab.
+      ENDLOOP.
+**Begin of Comment by C90007337 on 06.07.2026 CHG0032626
+**    Get MD & CEO Plans
+*      SELECT SINGLE parnr FROM zps_arpartner
+*        INTO lv_mdceo
+*       WHERE parvw EQ 'YE'.
+*      IF sy-subrc EQ 0.
+*        zcl_im_aprequest_update=>get_user_info(
+*              EXPORTING
+*                i_userid = lv_mdceo
+*              IMPORTING
+*                e_plans  = lv_ceoplans  ).
+*      ENDIF.
+*
+**     Derive the Employee level in the organization
+*      READ TABLE p_result_tab TRANSPORTING NO FIELDS WITH KEY objid = lv_ceoplans.
+*      IF sy-subrc IS INITIAL.
+*        DATA(lv_tabix) = sy-tabix.
+*        READ TABLE p_result_tab TRANSPORTING NO FIELDS WITH KEY objid = lv_plans.
+*        IF sy-subrc EQ 0.
+*          e_level = lv_tabix - sy-tabix.
+*        ENDIF.
+*      ENDIF.
+**End of Comment by C90007337 on 06.07.2026 CHG0032626
+**Begin of Change by C90007337 on 06.07.2026 CHG0032626
+**Get all MD & CEO partners (active only)
+      SELECT parnr FROM zps_arpartner
+        INTO TABLE lt_mdceo
+        WHERE ( parvw EQ 'YE' OR parvw EQ 'YY' )  ""OR parvw EQ 'YY' Added by C90007337 on 10.07.2026 CHG0032687
+          AND inact EQ ' '.
+
+      IF sy-subrc EQ 0.
+        LOOP AT lt_mdceo INTO lv_mdceo.
+
+          CLEAR lv_ceoplans.
+          zcl_im_aprequest_update=>get_user_info(
+            EXPORTING
+              i_userid = lv_mdceo
+            IMPORTING
+              e_plans  = lv_ceoplans ).
+
+*     Derive the Employee level in the organization
+          READ TABLE p_result_tab TRANSPORTING NO FIELDS
+               WITH KEY objid = lv_ceoplans.
+          IF sy-subrc IS INITIAL.
+            DATA(lv_tabix) = sy-tabix.
+            READ TABLE p_result_tab TRANSPORTING NO FIELDS
+                 WITH KEY objid = lv_plans.
+            IF sy-subrc EQ 0.
+**Begin of Comment by C90007337 on 08.07.2026 CHG0032687
+*              e_level = lv_tabix - sy-tabix.
+*              EXIT. "Level found - stop processing further partners
+**End of Comment by C90007337 on 08.07.2026 CHG0032687
+              lv_level = lv_tabix - sy-tabix. "Added by C90007337 on 08.07.2026 CHG0032687
+              APPEND lv_level TO e_level. "Added by C90007337 on 08.07.2026 CHG0032687
+            ENDIF.
+          ENDIF.
+
+        ENDLOOP.
+      ENDIF.
+**End of Change by C90007337 on 06.07.2026 CHG0032626
+    ENDIF .
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>GET_PARTNERTEXT
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_PARVW                        TYPE        PARVW(optional)
+* | [<-()] R_VTEXT                        TYPE        VTXTK
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_partnertext.
+
+    SELECT SINGLE vtext FROM tpart
+      INTO r_vtext
+     WHERE spras EQ sy-langu
+       AND parvw EQ i_parvw.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>GET_RULE_DETTAILS
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_RULE_ID                      TYPE        HR_SOBJID (default ='90000054')
+* | [<---] T_PTNR_CHECKS                  TYPE        ZFI_AR_PATNR_CHKS_TBL
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_rule_dettails.
+
+    DATA: respo_tab    TYPE STANDARD TABLE OF hrobject,
+          ls_ptnr_chks TYPE zfi_ar_patnr_chks,
+          i1218        TYPE STANDARD TABLE OF p1218,
+          it1218       TYPE STANDARD TABLE OF hrt1218,
+          contdef      TYPE STANDARD TABLE OF swcontdef,
+          objects      TYPE STANDARD TABLE OF hrobject.
+
+    CALL FUNCTION 'RH_GET_ACTOR_ATTRIBUTES'
+      EXPORTING
+        act_otype        = 'AC'
+        act_objid        = i_rule_id
+        AUTHORITY_CHECK  = ' '
+      TABLES
+        act_cont_def     = contdef
+      EXCEPTIONS
+        object_not_found = 1
+        OTHERS           = 2.
+    IF sy-subrc GT 0.
+    ENDIF.
+
+    CALL FUNCTION 'RH_DEPENDENT_OBJECTS_HANDLE'
+      EXPORTING
+        act_plvar         = '01'
+        parent_otype      = 'AC'
+        parent_objid      = i_rule_id
+        act_begda         = sy-datum
+        act_endda         = sy-datum
+        confirm_flag      = ''
+      TABLES
+        dependent_objects = respo_tab
+      EXCEPTIONS
+        OTHERS            = 0.
+    LOOP AT respo_tab INTO DATA(ls_respo).
+      REFRESH: i1218, it1218, objects.
+
+      CALL FUNCTION 'RH_READ_INFTY_NNNN'
+        EXPORTING
+          AUTHORITY = ' '
+          infty   = '1218'
+          plvar   = ls_respo-plvar
+          otype   = ls_respo-otype
+          objid   = ls_respo-objid
+          begda   = sy-datum
+          endda   = sy-datum
+        TABLES
+          innnn   = i1218
+          objects = objects
+        EXCEPTIONS
+          OTHERS  = 0.
+
+      CALL FUNCTION 'RH_READ_INFTY_TABDATA'
+        EXPORTING
+          infty          = '1218'
+          return_initial = space
+        TABLES
+          innnn          = i1218
+          hrtnnnn        = it1218
+        EXCEPTIONS
+          no_table_infty = 1
+          innnn_empty    = 2
+          nothing_found  = 3
+          OTHERS         = 4.
+
+      READ TABLE it1218 INTO DATA(ls_t1218) WITH KEY element =  'ARTYPE'.
+      IF sy-subrc EQ 0.
+        ls_ptnr_chks-artype = ls_t1218-expr_low.
+        DELETE it1218 INDEX sy-tabix.
+      ENDIF.
+
+      READ TABLE it1218 INTO ls_t1218 WITH KEY element =  'PARTNERTYPE'.
+      IF sy-subrc EQ 0.
+        ls_ptnr_chks-patype = ls_t1218-expr_low.
+        DELETE it1218 INDEX sy-tabix.
+      ENDIF.
+
+      LOOP AT it1218 INTO ls_t1218.
+        CASE ls_t1218-element.
+          WHEN 'CCTYPE'.
+            ls_ptnr_chks-fieldname = ls_t1218-element.
+            ls_ptnr_chks-value = ls_t1218-expr_low.
+            APPEND ls_ptnr_chks TO  t_ptnr_checks.
+          WHEN 'GRADE'.
+            ls_ptnr_chks-fieldname = ls_t1218-element.
+            ls_ptnr_chks-value = ls_t1218-expr_low.
+            APPEND ls_ptnr_chks TO  t_ptnr_checks.
+          WHEN 'HIERARCHY'.
+            ls_ptnr_chks-fieldname = ls_t1218-element.
+            ls_ptnr_chks-value = ls_t1218-expr_low.
+            APPEND ls_ptnr_chks TO  t_ptnr_checks.
+          WHEN 'LEVEL'.
+            ls_ptnr_chks-fieldname = ls_t1218-element.
+            ls_ptnr_chks-value = ls_t1218-expr_low.
+            APPEND ls_ptnr_chks TO  t_ptnr_checks.
+        ENDCASE.
+      ENDLOOP.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>GET_USER_INFO
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_USERID                       TYPE        USRID(optional)
+* | [<---] E_GRADE                        TYPE        CHAR3
+* | [<---] E_KOSTL                        TYPE        KOSTL
+* | [<---] E_PERNR                        TYPE        PERNR_D
+* | [<---] E_PLANS                        TYPE        PLANS
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_user_info.
+
+    DATA: ee_tab         TYPE pernr_us_tab,
+          lwa_ee_tab     LIKE LINE OF ee_tab,
+          wa_return      TYPE bapiret2,
+          lv_pernr       TYPE pernr_d,
+          lv_user        TYPE sy-uname,
+          ls_generaldata TYPE hrwpc_s_ep_generaldata.
+
+    lv_user = i_userid.
+*   Get Employee number from user id
+    SELECT SINGLE pernr FROM PA0105 INTO lv_pernr
+      WHERE SUBTY EQ '0001'
+        AND ENDDA GE sy-datum
+        AND BEGDA LE sy-DATUM
+        and USRID eq LV_USER.
+    IF sy-subrc EQ 0.
+      e_pernr = lv_pernr.
+      CLEAR ls_generaldata.
+      SELECT SINGLE kostl, plans, STELL FROM PA0001
+        INTO @DATA(lv_pa0001)
+       WHERE pernr EQ @lv_pernr
+         AND begda LE @sy-datum
+         AND endda GE @sy-datum.
+      IF lv_pa0001 IS NOT INITIAL.
+        e_kostl = lv_pa0001-kostl.
+        e_plans = lv_pa0001-plans.
+*       Get JOb Grade
+        CALL FUNCTION 'ZWF_FETCH_GRADE'
+          EXPORTING
+            i_pernr = lv_pernr
+            i_job   = lv_pa0001-stell
+          IMPORTING
+            i_level = ls_generaldata-trfst
+            i_grade = ls_generaldata-trfgr.
+        e_grade = ls_generaldata-trfst.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_IM_APREQUEST_UPDATE->IF_EX_APPREQUEST_UPDATE~AT_SAVE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] AKTYP                          TYPE        AKTYP
+* | [--->] MASTER_DATA                    TYPE        RIMAK
+* | [--->] ORG_UNITS                      TYPE        RIMAKPATAB
+* | [--->] DIVISION                       TYPE        RIMAKPSTAB
+* | [--->] MATERIAL_GRP                   TYPE        RIMAKPWTAB
+* | [--->] INVESTMENT_REASON              TYPE        RIMAKPITAB
+* | [--->] ENVIRONMNT_INVEST              TYPE        RIMAKPUTAB
+* | [--->] ASSETS_EQUIS                   TYPE        RIMAKATAB
+* | [--->] MEASURES                       TYPE        RIMAKZTAB
+* | [--->] INVESTMENT_PROGRAM             TYPE        BADIAPPREQ_PROGALLOCTAB
+* | [--->] PARTNER                        TYPE        RIHPATAB
+* | [--->] ORIGINAL_REQUEST               TYPE        RIMAKZS
+* | [--->] VARIANTS                       TYPE        RIMAVTAB
+* | [--->] ASSIGNMENT_TO_VERSION          TYPE        RIMAVZTAB
+* | [--->] APPREQUEST_STATUS              TYPE        TBAPIAPPREQSTATUS
+* | [--->] APPREQUEST_USER_STATUS         TYPE        TBAPIAPPREQSTATUS
+* | [--->] APPREQUESTVARNT_STATUS         TYPE        TBAPIAPPREQSTATUSVARNT
+* | [--->] APPREQUESTVARNT_USER_STATUS    TYPE        TBAPIAPPREQSTATUSVARNT
+* | [EXC!] ERROR_WITH_MESSAGE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD if_ex_apprequest_update~at_save.
+
+************************************************************************
+* Changed by: C90000111                                                *
+* Date   : 28/10/2008                                                  *
+* Call ID: HD159352                                                    *
+* Details  : Checks for AR Workflow                                    *
+* Transport Request No(s): DSDK914710                                  *
+* Date   : 03/02/2011                                                  *
+* Call ID: HD255190                                                    *
+* Details: Check custom authorization object not the role name         *
+* Version: 1.0                                                         *
+* CRQ No: CRQ12409                                                     *
+* Details: Plan Version CA1 needs to be checked                        *
+* Version: 2.0                                                         *
+* CRQ No.: CRQ19416                                                    *
+* Transport Request: DSDK938275                                        *
+* Details: Status change allow for ET type request                     *
+* ITS: 210000002476                                                    *
+************************************************************************
+* 3.0   12.10.2014   C90000825  DSDK942809  Validate EY Appr Req       *
+* 4.0   17.02.2015   C90000111  DSDK943978  CRQ28668                   *
+* Description: Change default partner and Raise error message if       *
+* if Total Estimated Cost exceeds 30% of Total Approved Budget         *
+* 5.0   12.04.2017   C90000111  DSDK951052  CRQ112799                  *
+* Description: Dont raise cost message for MM Project                  *
+* 6.0   08.04.2022   C90000111  DSDK986916 CRQ145542                   *
+* Description:DoA check are not valid for ET type                      *
+* 7.0   07.08.2025   C90007738  DSDK9A01SS CHG0021676                  *
+*Description : Added Enhancement for Capital Projects                  *
+*8.0   17.02.2026    C90007373 DSDK9A094P CHG0027840                             *
+*Description :Added Enhancement for Inola Projects                     *
+************************************************************************
+    TYPE-POOLS imad1.
+    DATA : wa_variants TYPE rimav,
+           wa_version  TYPE rimavz,
+           lv_wtges    TYPE bp_wgt.
+
+    DATA : gt_raia9(20) VALUE '(SAPLAIA9)GT_RAIA9[]',
+           wa_raia9     TYPE ima_raia9,
+           gv_value     TYPE invkos.
+*<<< HD212624 Modified by C90000111
+    DATA: gv_totvalue TYPE invkos.
+*>>> HD212624 Modified by C90000111
+    FIELD-SYMBOLS : <fs1> TYPE table.
+    DATA : gt_raia1(20) VALUE '(SAPLAIA1)RAIA1',
+           wa_raia1     TYPE raia1.
+    FIELD-SYMBOLS : <fs2> TYPE raia1.
+
+
+
+    DATA : wa_apprequest_status TYPE bapiappreqstatus.
+    DATA : wa_jest TYPE jest.
+
+    DATA: gv_flg        TYPE c,
+          lv_flag1      TYPE c, "Added by C90007373
+          gv_cntr       TYPE i,
+          wa_acgroups   TYPE bapiagr,
+          wa_return     TYPE bapiret2,
+          wa_partner    TYPE rihpa,
+          lwa_partner   TYPE rihpa,
+          it_partner    TYPE rihpatab,
+          gv_datum      TYPE datum VALUE '20090406',
+          wa_oldpartner TYPE ihpa,
+          it_oldpartner TYPE STANDARD TABLE OF ihpa INITIAL SIZE 0,
+          it_acgroups   TYPE STANDARD TABLE OF bapiagr INITIAL SIZE 0,
+          it_return     TYPE STANDARD TABLE OF bapiret2 INITIAL SIZE 0.
+*<<< Modified by C90000111 HDXXXXX
+    DATA: gt_xverw(20) VALUE '(SAPLAIA1)XVERW[]',
+          wa_xverw     TYPE imad1_verw,
+          gt_lines(20) VALUE '(SAPLAIA7)T_LINES[]',
+          wa_lines     TYPE tline,
+          lv_stxh      TYPE stxh,
+          gv_mdisplay  TYPE c.
+
+    DATA: ls_imak TYPE imak.
+    DATA: lv_subrc TYPE sy-subrc.
+
+    DATA: lt_partner TYPE rihpatab,
+          lv_total   TYPE i,
+          lv_unique  TYPE i.
+
+    FIELD-SYMBOLS : <t_xverw> TYPE table,
+                    <t_lines> TYPE table.
+
+*  break dub06038.
+    CLEAR : wa_variants,
+            wa_version,
+            lv_wtges,
+            wa_raia9,
+            gv_flg,
+            gv_cntr,
+            gv_value,
+            wa_raia1,
+            wa_jest,
+            wa_oldpartner,
+            wa_apprequest_status,
+*>>> HD212624 Modified by C90000111
+            gv_totvalue,
+            lwa_partner,
+            wa_partner.
+*          gv_mdisplay.
+*<<< HD212624 Modified by C90000111
+    IF master_data-erdat GT gv_datum.
+      break c90000825.
+
+* Check for long text.
+      ASSIGN (gt_xverw) TO <t_xverw>.
+      IF <t_xverw> IS ASSIGNED.
+        READ TABLE <t_xverw> INTO wa_xverw  INDEX 1.
+        IF sy-subrc EQ 0.
+          IF wa_xverw-kz EQ 'I'.
+            IF wa_xverw-flg_ltx_ia IS INITIAL.
+              gv_mdisplay = 'X'.
+            ELSE.
+              ASSIGN (gt_lines) TO <t_lines>.
+              IF <t_lines> IS ASSIGNED AND <t_lines> IS INITIAL.
+                gv_mdisplay = 'X'.
+              ENDIF.
+            ENDIF.
+          ELSEIF wa_xverw-kz EQ 'U'.
+*       If user doesnt go to long text, the indicator is not set X
+*       In this case we are checking the data base table first.
+            SELECT SINGLE *
+              FROM stxh
+              INTO lv_stxh
+             WHERE tdobject EQ 'IMAK'
+               AND tdname   EQ wa_xverw-posnr
+               AND tdid     EQ 'XLTX'.
+            IF sy-subrc EQ 0.
+*        Check whether user is deleting the long text
+              IF wa_xverw-flg_ltx_ia  IS NOT INITIAL.
+                ASSIGN (gt_lines) TO <t_lines>.
+                IF <t_lines> IS ASSIGNED AND <t_lines> IS INITIAL.
+                  gv_mdisplay = 'X'.
+                ENDIF.
+              ENDIF.
+            ELSE.
+              IF wa_xverw-flg_ltx_ia  IS INITIAL.
+                gv_mdisplay = 'X'.
+              ELSE.
+                ASSIGN (gt_lines) TO <t_lines>.
+                IF <t_lines> IS ASSIGNED AND <t_lines> IS INITIAL.
+                  gv_mdisplay = 'X'.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      IF gv_mdisplay EQ 'X'.
+        sy-msgid = '26'.
+        sy-msgty = 'E'.
+        sy-msgno = '500'.
+        sy-msgv1 = 'Please enter AR justification in long text field '(001).
+        sy-msgv2 = 'of the AR header'(002).
+        RAISE error_with_message.
+      ENDIF.
+* Checking if the values is changing in for approval status.
+      IF sy-tcode EQ 'IMA11' OR sy-tcode EQ 'IMA2N'.
+* First created and then change the status.
+        SELECT SINGLE *
+          INTO wa_jest
+          FROM jest
+         WHERE objnr EQ master_data-objnr
+           AND stat EQ 'I0354'
+           AND inact EQ ''.
+        IF sy-subrc EQ 0.
+*     Check whether the person trying to change AR after it has been
+*     sumbitted for approval, has the role CT_DEPS_PRJAPPFIN_ALL -
+*     (Project Approval - Finance - Full Access) and if yes, allow
+*     else raise an error message
+*<<<    HD255190 Modified by C90000111
+*       New authorization object has been created becoz
+*       roles name should not be hardcoded as per audit obervations.
+*        CALL FUNCTION 'BAPI_USER_GET_DETAIL'
+*          EXPORTING
+*            username       = sy-uname
+*          TABLES
+*            activitygroups = it_acgroups
+*            return         = it_return.
+*        IF sy-subrc EQ 0.
+*          READ TABLE it_acgroups INTO wa_acgroups
+*                                 WITH KEY agr_name = 'CT_DEPS_PRJAPPFIN_ALL'.
+*          IF sy-subrc EQ 0.
+*            gv_flg = 'X'.
+*          ENDIF.
+*        ENDIF.
+          AUTHORITY-CHECK OBJECT 'ZAR_CHKS'
+                              ID 'ACTVT' FIELD '02'.
+          IF sy-subrc EQ 0.
+            gv_flg = 'X'.
+          ENDIF.
+*>>>   Modification end HD255190
+
+
+          READ TABLE apprequest_status INTO wa_apprequest_status WITH KEY status = 'I0354'.
+          IF sy-subrc EQ 0 AND gv_flg NE 'X'.
+            sy-msgid = '26'.
+            sy-msgty = 'E'.
+            sy-msgno = '500'.
+            sy-msgv1 = 'Values can not be changed because Appropriation'(003).
+            sy-msgv2 = 'request has been submitted for approval. First'(004).
+            sy-msgv3 = 'postpone approval and then change the'(005).
+            sy-msgv4 = 'appropriation request'(006).
+            RAISE error_with_message.
+          ELSE.
+            READ TABLE apprequest_status INTO wa_apprequest_status WITH KEY status = 'I0001'.
+            IF sy-subrc EQ 0 AND gv_flg NE 'X'.
+              sy-msgid = '26'.
+              sy-msgty = 'E'.
+              sy-msgno = '500'.
+              sy-msgv1 = 'Values can not be changed because Appropriation'(003).
+              sy-msgv2 = 'request has been submitted for approval. First'(004).
+              sy-msgv3 = 'postpone approval and then change the'(005).
+              sy-msgv4 = 'appropriation request'(006).
+              RAISE error_with_message.
+            ENDIF.
+          ENDIF.
+          READ TABLE apprequest_status INTO wa_apprequest_status WITH KEY status = 'I0354'.
+*<<<    Modification related to CRQ19416 DSDK938275
+*       Status change allow for ET request
+*        IF sy-subrc NE 0
+          IF sy-subrc NE 0 AND master_data-ivart NE 'ET'.
+*>>>    Modification end CRQ19416 DSDK938275
+            sy-msgid = '26'.
+            sy-msgty = 'E'.
+            sy-msgno = '500'.
+            sy-msgv1 = 'Status can not be changed because Workflow'(007).
+            sy-msgv2 = 'is in active state'(008).
+*        sy-msgv3 = 'postpone approval and then change the'.
+*        sy-msgv4 = 'appropriation request'.
+            RAISE error_with_message.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+*<<< Modification related to CRQ12409
+** Checking the variant is assigned or not.
+*    READ TABLE assignment_to_version INTO wa_version WITH KEY versi = '000'.
+*    IF sy-subrc NE 0.
+*      sy-msgid = '26'.
+*      sy-msgty = 'E'.
+*      sy-msgno = '000'.
+*      sy-msgv1 = 'Assign Variant to Plan Version ZERO'.
+**    'Variant is not defined for Plan version'.
+*      RAISE error_with_message.
+*    ELSE.
+*      IF wa_version-varnt IS INITIAL.
+*        sy-msgid = '26'.
+*        sy-msgty = 'E'.
+*        sy-msgno = '000'.
+*        sy-msgv1 = 'Assign Variant to Plan Version ZERO'.
+**      'Variant is not defined for Plan version'.
+*        RAISE error_with_message.
+*      ENDIF.
+*    ENDIF.
+* Checking the variant is assigned or not.
+      READ TABLE assignment_to_version INTO wa_version WITH KEY versi = 'CA1'.
+      IF sy-subrc NE 0.
+        sy-msgid = '26'.
+        sy-msgty = 'E'.
+        sy-msgno = '000'.
+        sy-msgv1 = 'Assign Variant to Plan Version CA1'(009).
+*    'Variant is not defined for Plan version'.
+        RAISE error_with_message.
+      ELSE.
+        IF wa_version-varnt IS INITIAL.
+          sy-msgid = '26'.
+          sy-msgty = 'E'.
+          sy-msgno = '000'.
+          sy-msgv1 = 'Assign Variant to Plan Version CA1'(009).
+*      'Variant is not defined for Plan version'.
+          RAISE error_with_message.
+        ENDIF.
+      ENDIF.
+*>>> Modification end CRQ12409
+*<<< Modified by C90000111 HD214324
+* checking if applicant and approver is same
+      READ TABLE partner INTO wa_partner WITH KEY parvw = 'I1'.
+      IF sy-subrc EQ 0.
+        LOOP AT partner INTO lwa_partner WHERE parvw NE 'I1'
+                                           AND parnr EQ wa_partner-parnr.
+          sy-msgid = '26'.
+          sy-msgty = 'E'.
+          sy-msgno = '000'.
+          sy-msgv1 = 'Applicant can not be an approver'(010).
+          RAISE error_with_message.
+        ENDLOOP.
+      ENDIF.
+      CLEAR : lwa_partner, wa_partner.
+*<<< Modification end here  HD214324
+* Checking the plan values is defined or not at the time of creation
+      IF aktyp EQ 'I'.
+*    Check whether overall plan value is not initial. If it does not
+*    have a value raise an error message
+        ASSIGN (gt_raia9) TO <fs1>.
+        IF <fs1> IS INITIAL.
+          ASSIGN (gt_raia1) TO <fs2>.
+          IF <fs2> IS INITIAL.
+            sy-msgid = '26'.
+            sy-msgty = 'E'.
+            sy-msgno = '000'.
+            sy-msgv1 = 'Plan Values not defined'(011).
+            RAISE error_with_message.
+          ELSE.
+*       Creating the AR by copying the AR.
+            wa_raia1 = <fs2>.
+            IF wa_raia1-posnr IS INITIAL.
+              sy-msgid = '26'.
+              sy-msgty = 'E'.
+              sy-msgno = '000'.
+              sy-msgv1 = 'Plan Values not defined'(011).
+              RAISE error_with_message.
+            ENDIF.
+          ENDIF.
+        ELSE.
+          LOOP AT <fs1> INTO wa_raia9.
+            IF wa_raia9-planitem EQ '0000'.
+              gv_value = gv_value + wa_raia9-invkos.
+            ENDIF.
+*<<<  HD212624 Modified by C90000111
+*     Total value
+            IF wa_raia9-planitem EQ '9999'.
+              gv_totvalue = gv_totvalue + wa_raia9-invkos.
+            ENDIF.
+*<<<  HD212624 Modified by C90000111
+            CLEAR: wa_raia9.
+          ENDLOOP.
+          IF gv_value IS INITIAL.
+            sy-msgid = '26'.
+            sy-msgty = 'E'.
+            sy-msgno = '000'.
+            sy-msgv1 = 'Plan Values not defined'(011).
+            RAISE error_with_message.
+*<<<  HD212624 Modified by C90000111
+          ELSEIF gv_value NE gv_totvalue.
+            sy-msgid = '26'.
+            sy-msgty = 'E'.
+            sy-msgno = '000'.
+            sy-msgv1 = 'Overall plan value is not equal to total value'(012).
+            RAISE error_with_message.
+*<<<  HD212624 Modified by C90000111
+          ENDIF.
+        ENDIF.
+* Checking the plan values is defined or not at the time of updation
+      ELSE.
+        ASSIGN (gt_raia9) TO <fs1>.
+        IF <fs1> IS ASSIGNED AND <fs1> IS NOT INITIAL.
+          LOOP AT <fs1> INTO wa_raia9.
+            IF wa_raia9-planitem EQ '0000'.
+              gv_value = gv_value + wa_raia9-invkos.
+            ENDIF.
+*<<<  HD212624 Modified by C90000111
+*     Total value
+            IF wa_raia9-planitem EQ '9999'.
+              gv_totvalue = gv_totvalue + wa_raia9-invkos.
+            ENDIF.
+*<<<  HD212624 Modified by C90000111
+            CLEAR: wa_raia9.
+          ENDLOOP.
+          IF gv_value IS INITIAL.
+            sy-msgid = '26'.
+            sy-msgty = 'E'.
+            sy-msgno = '000'.
+            sy-msgv1 = 'Plan Values not defined'(011).
+            RAISE error_with_message.
+*<<<  HD212624 Modified by C90000111
+          ELSEIF gv_value NE gv_totvalue.
+            sy-msgid = '26'.
+            sy-msgty = 'E'.
+            sy-msgno = '000'.
+            sy-msgv1 = 'Overall plan value is not equal to total value'(012).
+            RAISE error_with_message.
+*<<<  HD212624 Modified by C90000111
+          ENDIF.
+        ELSE.
+          LOOP AT variants INTO wa_variants.
+            SELECT SINGLE wtges
+              INTO lv_wtges
+              FROM bpge
+             WHERE objnr EQ wa_variants-objnr
+               AND wrttp EQ '39'.
+            IF sy-subrc NE 0.
+              sy-msgid = '26'.
+              sy-msgty = 'E'.
+              sy-msgno = '000'.
+              sy-msgv1 = 'Plan Values not defined'(011).
+              RAISE error_with_message.
+            ENDIF.
+            CLEAR : wa_variants, lv_wtges.
+          ENDLOOP.
+        ENDIF.
+*   Check whether the user has changed any partner values and if yes,
+*   raise error message and do not allow to save incase if the AR is
+*   already submitted for approval or else allow the changes
+        IF gv_flg NE 'X'.  " Modified by C90000111 Case id 200635
+          READ TABLE apprequest_status INTO wa_apprequest_status WITH KEY status = 'I0354'.
+          IF sy-subrc EQ 0.
+*    IF  gv_flg = 'X'.
+            it_partner[] = partner.
+            SORT it_partner BY counter.
+            SELECT *
+              INTO TABLE it_oldpartner
+              FROM ihpa
+             WHERE objnr EQ master_data-objnr
+*<<<       Modified by C90000111 HD244560
+*          Dont Consider deleted parners
+               AND kzloesch NE 'X'.
+*>>>       Modification end HD244560
+            IF sy-subrc EQ 0.
+              SORT it_oldpartner BY counter.
+              IF it_oldpartner[] NE it_partner[].
+                sy-msgid = '26'.
+                sy-msgty = 'E'.
+                sy-msgno = '000'.
+                sy-msgv1 = 'Change of partners not allowed at this Stage'(013).
+                RAISE error_with_message.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+        ENDIF.  " Modified by C90000111. Case ID 200635
+      ENDIF.
+
+** Begin of Add CRQ26636 DSDK942809 30.09.2014 08:51:43
+**---------------------------------------------------------------------*
+** Validate the EY appr Request when entered in EX Appr Request
+**---------------------------------------------------------------------*
+*    MOVE-CORRESPONDING master_data TO ls_imak.
+*    IF master_data-ivart EQ 'EX' AND master_data-zz_posnr_ey IS NOT INITIAL
+*       AND ( aktyp NE 'A' AND aktyp NE 'L' ).
+*
+*      CALL METHOD me->validate_ey_appr_req
+*        EXPORTING
+*          i_posnr_ey       = master_data-zz_posnr_ey
+*          i_ximak          = ls_imak
+*          i_ey_approve_chk = 'X'
+*          i_limit_exceed   = 'X'
+*        IMPORTING
+*          e_subrc          = lv_subrc.
+*    ENDIF.
+** End of Add DSDK942809
+*<<< Modification related to CRQ28668 DSDK943978
+*  "Below message is responsible to raise message if total esitmated
+*  "Cost is more than 120 percent of total approved cost
+*  "Message will come as POP UP if system status is created or rejected
+*  "only in Forground mode
+*  "Message will come as warning if system status is FOR approval and
+*  "previous status is created or rejected
+*  Raise Message
+      CALL METHOD me->__raise_message
+        EXPORTING
+          aktyp              = aktyp
+          master_data        = master_data
+          apprequest_status  = apprequest_status
+        EXCEPTIONS
+          error_with_message = 1
+          OTHERS             = 2.
+      IF sy-subrc <> 0.
+*    MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*               WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+        sy-msgid = '26'.
+        sy-msgty = 'E'.
+        sy-msgno = '000'.
+        sy-msgv1 = text-015.
+        RAISE error_with_message.
+      ENDIF.
+*  "Below method is responsible to change partner if
+*  "parnter is not matched with partner maintained in
+*  "table ZIM_POS_PARTNER
+*  "Same funtionality put in implicit enhancement ZFI_AR_PARTNER
+*  "but its called successfullly  if user fill all data and come
+*  " to the initial screen but sometimes user put amount and save
+*  " it then below message will take care of it
+*  "Responsible to change partner
+      CALL METHOD me->__change_partner
+        EXPORTING
+          aktyp              = aktyp
+          master_data        = master_data
+          investment_program = investment_program
+          partner            = partner
+          apprequest_status  = apprequest_status.
+*>>> Modification end CRQ28668 DSDK943978
+*  "Modification related to CRQ109623 DSDK949451
+*  "Raise Error Message the Total Estmd/CEP Cost is less than 25,000 $
+*  "Raise Warning Message Total Estmd/CEP should be >= 25,000 USD
+*  Raise Message
+      CALL METHOD me->__raise_cost_message
+        EXPORTING
+          aktyp                = aktyp
+          master_data          = master_data
+          apprequest_status    = apprequest_status
+          variants             = variants
+          i_totvalue           = gv_totvalue
+        EXCEPTIONS
+          error_with_message   = 1
+          warning_with_message = 2
+          OTHERS               = 3.
+      IF sy-subrc <> 0.
+        RAISE error_with_message.
+      ENDIF.
+
+*************************************************
+*     "Modification related to DSDK986916 CRQ145542
+*     "DoA checks are not required to ET as there is not
+*     "DoA defined for ET
+      IF master_data-ivart NE 'ET'.
+*     "Modficiaton end DSDK986916
+        DATA: e_invalid     TYPE char1,
+              e_return      TYPE zfi_ar_messages_struc,
+              gs_imakpa(20) VALUE '(SAPLAIA1)IMAKPA'.
+
+        FIELD-SYMBOLS: <fs_imakpa> TYPE imakpa.
+
+        ASSIGN (gs_imakpa) TO <fs_imakpa>.
+        IF sy-subrc EQ 0.
+          zcl_im_aprequest_update=>validate_user(
+            EXPORTING
+              i_partner            = partner
+              i_master_data        = master_data
+              i_investment_program = investment_program
+              i_imakpa             =  <fs_imakpa>
+              i_investment_reason  = investment_reason
+              i_aktyp              = aktyp
+
+            IMPORTING
+              e_invalid            = e_invalid
+              e_return             = e_return   ).
+        ENDIF.
+
+        IF e_invalid EQ 'X'.
+          sy-msgid = '26'.
+          sy-msgty = 'E'.
+          sy-msgno = '000'.
+          sy-msgv1 = |Error in Partner Determinarion|.
+          RAISE error_with_message.
+        ENDIF.
+      ENDIF.                                                "CRQ145542
+*************************************************
+
+    ENDIF. "Sy-datum
+*****SOC by C90007738 on 30/07/2025 with TR DSDK9A01SS
+    IF master_data-ivart = 'EN' AND ( aktyp  = 'I' OR aktyp  = 'U' ).
+* SOC by C90007738 with TR# DSDK9A094P CR# CHG0027840 for Inola Project on 17.02.2026
+      IF ( master_data-abukrs = '4100' OR master_data-abukrs = '1600').
+        IF master_data-vbukrs NE master_data-abukrs.
+          lv_flag1 = 'X'.
+          sy-msgid = 'ZPS'.
+          sy-msgty = 'E'.
+          sy-msgno = '014'.
+          sy-msgv1 = | Resp. company code must be same as Req Company code only|.
+          RAISE error_with_message.
+        ENDIF.
+      ELSE.
+        sy-msgid = 'ZPS'.
+        sy-msgty = 'E'.
+        sy-msgno = '015'.
+        sy-msgv1 = |For AR Type EN ,Req. and Resp. company code must be 4100 or 1600 only|.
+        RAISE error_with_message.
+      ENDIF.
+      IF ( master_data-vbukrs = '4100' OR master_data-vbukrs = '1600') AND lv_flag1 = 'X'.
+        IF master_data-abukrs NE master_data-vbukrs.
+          sy-msgid = 'ZPS'.
+          sy-msgty = 'E'.
+          sy-msgno = '016'.
+          sy-msgv1 = | Req. company code must be same as Resp. Company code only|.
+          RAISE error_with_message.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+*****EOC by C90007738 on 30/07/2025 with TR DSDK9A01SS
+*>>> Modification : C90000286 : SUNIL : E10K942193 : CRQ 113861
+* Begin of Modification DSDK951891 CRQ112907
+    lt_partner = partner.
+
+    DELETE lt_partner WHERE parnr EQ space.
+
+    SORT lt_partner BY parnr.
+
+    DESCRIBE TABLE lt_partner LINES lv_total.
+
+    DELETE ADJACENT DUPLICATES FROM lt_partner COMPARING parnr.
+    DESCRIBE TABLE lt_partner LINES lv_unique.
+* End of Modification DSDK951891 CRQ112907
+*  IF lv_total NE lv_unique.
+*    MESSAGE e085(zfi) WITH 'Please maintain unique Partners.'(026)
+*    RAISING error_with_message.
+*  ENDIF.
+
+*<<< Modification : C90000286 : SUNIL : E10K942193 : CRQ 113861
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_IM_APREQUEST_UPDATE->IF_EX_APPREQUEST_UPDATE~BEFORE_BUSINESS_TRANSACTION
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] TRANSACTION                    TYPE        J_VORGANG
+* | [--->] VARNT                          TYPE        IMA_VARNT
+* | [--->] AKTYP                          TYPE        AKTYP
+* | [--->] MASTER_DATA                    TYPE        RIMAK
+* | [--->] ORG_UNITS                      TYPE        RIMAKPATAB
+* | [--->] DIVISION                       TYPE        RIMAKPSTAB
+* | [--->] MATERIAL_GRP                   TYPE        RIMAKPWTAB
+* | [--->] INVESTMENT_REASON              TYPE        RIMAKPITAB
+* | [--->] ENVIRONMNT_INVEST              TYPE        RIMAKPUTAB
+* | [--->] ASSETS_EQUIS                   TYPE        RIMAKATAB
+* | [--->] MEASURES                       TYPE        RIMAKZTAB
+* | [--->] INVESTMENT_PROGRAM             TYPE        BADIAPPREQ_PROGALLOCTAB
+* | [--->] PARTNER                        TYPE        RIHPATAB
+* | [--->] ORIGINAL_REQUEST               TYPE        RIMAKZS
+* | [--->] VARIANTS                       TYPE        RIMAVTAB
+* | [--->] ASSIGNMENT_TO_VERSION          TYPE        RIMAVZTAB
+* | [--->] APPREQUEST_STATUS              TYPE        TBAPIAPPREQSTATUS
+* | [--->] APPREQUEST_USER_STATUS         TYPE        TBAPIAPPREQSTATUS
+* | [--->] APPREQUESTVARNT_STATUS         TYPE        TBAPIAPPREQSTATUSVARNT
+* | [--->] APPREQUESTVARNT_USER_STATUS    TYPE        TBAPIAPPREQSTATUSVARNT
+* | [EXC!] ERROR_WITH_MESSAGE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD if_ex_apprequest_update~before_business_transaction.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZCL_IM_APREQUEST_UPDATE->IF_EX_APPREQUEST_UPDATE~BEFORE_UPDATE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] AKTYP                          TYPE        AKTYP
+* | [--->] MASTER_DATA                    TYPE        RIMAK
+* | [--->] ORG_UNITS                      TYPE        RIMAKPATAB
+* | [--->] DIVISION                       TYPE        RIMAKPSTAB
+* | [--->] MATERIAL_GRP                   TYPE        RIMAKPWTAB
+* | [--->] INVESTMENT_REASON              TYPE        RIMAKPITAB
+* | [--->] ENVIRONMNT_INVEST              TYPE        RIMAKPUTAB
+* | [--->] ASSETS_EQUIS                   TYPE        RIMAKATAB
+* | [--->] MEASURES                       TYPE        RIMAKZTAB
+* | [--->] INVESTMENT_PROGRAM             TYPE        BADIAPPREQ_PROGALLOCTAB
+* | [--->] PARTNER                        TYPE        RIHPATAB
+* | [--->] ORIGINAL_REQUEST               TYPE        RIMAKZS
+* | [--->] VARIANTS                       TYPE        RIMAVTAB
+* | [--->] ASSIGNMENT_TO_VERSION          TYPE        RIMAVZTAB
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD if_ex_apprequest_update~before_update.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>USER_GRADE_CHECK_WITH_LEVEL
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_USER                         TYPE        USRID(optional)
+* | [--->] I_KOSTL                        TYPE        KOSTL(optional)
+* | [--->] I_TRFST                        TYPE        ZHR_RANGE_TRFST
+* | [--->] I_LEVEL                        TYPE        NUMC2
+* | [--->] I_HEIR                         TYPE        CHAR1
+* | [--->] I_IMUSER                       TYPE        USRID(optional)
+* | [--->] IR_LEVEL                       TYPE        ZHR_RANGE_LEVEL(optional)
+* | [<---] E_INVALID                      TYPE        CHAR1
+* | [<---] E_RETURN                       TYPE        ZFI_AR_MESSAGES_STRUC
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD user_grade_check_with_level.
+*     Modification History                                             *
+*======================================================================*
+* Ver    Date      UserID     TransportNo         Description          *
+*----------------------------------------------------------------------*
+*
+*
+*     23.05.2025  C90007373   DSDK9A01SS      Added logic to skip      *
+*                                            cost center validation for 4400
+* V2.0 08.07.2026 C90007337   DSDK9A0D1T     Enhancement to Approver Level*
+*                                            Determination Logic           *
+*----------------------------------------------------------------------*
+
+    DATA: lv_pernr     TYPE pernr_d,
+          lv_manager   TYPE sysid,
+          lv_plans     TYPE plans,
+          lv_ccplans   TYPE plans,
+          lv_usrlvl    TYPE numc2,
+          lv_cclvl     TYPE numc2,
+          lv_grade     TYPE char3,
+          lv_ccowner   TYPE usrid,
+          lv_ccpernr   TYPE pernr_d,
+          lv_kostl     TYPE kostl,
+          lv_textlevel TYPE text120.
+**Begin of change by C90007337 on 08.07.2026 CHG0032687
+* Check employee level in the organisation
+    DATA: lt_usrlvl TYPE zcl_im_aprequest_update=>ty_level_tab,
+          lv_valid  TYPE abap_bool.
+**End of change by C90007337 on 08.07.2026 CHG0032687
+
+    IF i_heir EQ  'S'.
+      CALL METHOD zcl_im_aprequest_update=>get_user_info
+        EXPORTING
+          i_userid = i_imuser
+        IMPORTING
+          e_pernr  = lv_pernr.
+      IF lv_pernr IS NOT INITIAL.
+        fetch_direct_manager( EXPORTING i_pernr = lv_pernr
+                              IMPORTING e_id    = lv_manager ).
+      ENDIF.
+      IF lv_manager IS INITIAL OR  lv_manager NE i_user.
+        e_invalid = 'X'.
+        e_return-message = |Incorrect Applicant Manager|.
+      ENDIF.
+      EXIT.
+    ENDIF.
+
+    CASE i_level.
+      WHEN ''.
+*       "Get user Grade of employee entered
+        zcl_im_aprequest_update=>get_user_info(
+          EXPORTING
+            i_userid = i_user
+          IMPORTING
+            e_grade  = lv_grade
+            e_kostl  = lv_kostl
+            e_pernr  = lv_pernr
+            e_plans  = lv_plans ).
+        IF lv_grade IN i_trfst[] AND lv_kostl EQ i_kostl.
+*        DO Nothing
+        ELSE.
+          IF lv_grade NOT IN i_trfst[].
+            e_invalid = 'X'.
+            e_return-parnr   = i_user.
+            e_return-message = |Not a Grade H and above user|.
+            EXIT.
+          ENDIF.
+******Start of Change by C90007373 in TR DSDK9A01SS for Appropriation Request CC Mapping Change in AT POwer O&M
+          SELECT SINGLE kostl,bukrs FROM zps_cost_centre
+          INTO @DATA(ls_kostl)
+          WHERE kostl = @i_kostl.
+          IF sy-subrc NE 0.
+******End of Change by C90007373 in TR DSDK9A01SS for Appropriation Request CC Mapping Change in AT POwer O&M
+*         Get Cost Center Owner info
+            CALL METHOD zcl_im_aprequest_update=>get_costcenter_owner(
+              EXPORTING
+                i_kostl   = i_kostl
+              IMPORTING
+                e_ccowner = lv_ccowner
+                e_return  = e_return
+                e_invalid = e_invalid
+                e_pernr   = lv_pernr
+                e_plans   = lv_ccplans ).
+            IF e_invalid EQ 'X'.
+              EXIT.
+            ELSE.
+              CALL METHOD zcl_im_aprequest_update=>check_emp_in_cc_struc
+                EXPORTING
+                  i_userpos  = lv_plans
+                  i_ccownpos = lv_ccplans
+                IMPORTING
+                  e_invalid  = e_invalid.
+              IF e_invalid EQ 'X'.
+                e_return-parnr   = i_user.
+                e_return-message = |Grade above H user not from Requesting CC|.
+                EXIT.
+              ENDIF.
+            ENDIF.
+          ENDIF."Added by C90007373 in TR DSDK9A01SS for Appropriation Request CC Mapping Change in AT POwer O&M
+        ENDIF.
+
+      WHEN OTHERS.
+*       "Get user Grade of employee entered
+        zcl_im_aprequest_update=>get_user_info(
+          EXPORTING
+            i_userid = i_user
+          IMPORTING
+            e_grade  = lv_grade
+            e_kostl  = lv_kostl
+            e_pernr  = lv_pernr
+            e_plans  = lv_plans  ).
+        IF lv_grade NOT IN i_trfst[].
+          e_invalid = 'X'.
+          e_return-parnr   = i_user.
+          e_return-message = |Employee's grade is not as per Workflow|.
+          EXIT.
+        ENDIF.
+
+*       Check employee level in the organisation
+        zcl_im_aprequest_update=>get_emp_org_level(
+          EXPORTING
+            i_pernr = lv_pernr
+          IMPORTING
+             e_level = lt_usrlvl ). "lv_usrlvl  lt_usrlvl added by c90007337 on 08.07.2026 CHG0032687
+
+**Begin of change by C90007337 on 08.07.2026 CHG0032687
+* Check if ANY of the found levels is within the allowed range
+        CLEAR lv_valid.
+        LOOP AT lt_usrlvl INTO lv_usrlvl.
+          IF lv_usrlvl IN ir_level.
+            lv_valid = abap_true.
+            EXIT.  "One valid level is sufficient
+          ENDIF.
+        ENDLOOP.
+****End of change by C90007337 on 08.07.2026 CHG0032687
+
+
+
+*        IF lv_usrlvl NE i_level.
+*        IF lv_usrlvl NOT IN ir_level."commented by C90007337 on 08.07.2026 CHG0032687
+        IF lv_valid EQ abap_false. "Added by C90007337 on 08.07.2026 CHG0032687
+          DESCRIBE TABLE ir_level LINES DATA(lv_lines).
+          IF lv_lines GT 1.
+            CLEAR: lv_textlevel.
+            LOOP AT ir_level INTO DATA(lv_level).
+              IF sy-tabix EQ 1.
+                lv_textlevel = |N-{ lv_level-low }|.
+              ELSE.
+                lv_textlevel = lv_textlevel && |or| && |N-{ lv_level-low }|.
+              ENDIF.
+            ENDLOOP.
+            e_invalid = 'X'.
+            e_return-message = |Employee Level is not in { lv_textlevel }|.
+          ELSE.
+*         "Check employee Grade falls as per the DOA Grades
+            e_invalid = 'X'.
+            e_return-message = |Employee Level is not N-{ i_level }|.
+          ENDIF.
+          EXIT.
+        ELSE.
+
+*         Check how employee associated with the enter Cost Center
+          IF lv_kostl NE i_kostl.
+******Start of Change by C90007373 in TR DSDK9A01SS for Appropriation Request CC Mapping Change in AT POwer O&M
+            CLEAR ls_kostl.
+            SELECT SINGLE kostl,bukrs FROM zps_cost_centre
+            INTO @ls_kostl
+            WHERE kostl = @i_kostl.
+            IF sy-subrc NE 0.
+******End of Change by C90007373 in TR DSDK9A01SS for Appropriation Request CC Mapping Change in AT POwer O&M
+*           Get the cost center owner and check whether
+              zcl_im_aprequest_update=>get_costcenter_owner(
+                EXPORTING
+                  i_kostl   = i_kostl
+                IMPORTING
+                  e_ccowner = lv_ccowner
+                  e_return  = e_return
+                  e_invalid = e_invalid
+                  e_pernr   = lv_ccpernr
+                  e_plans   = lv_ccplans ).
+              IF e_invalid = '' AND lv_ccowner NE i_user.
+                CALL METHOD zcl_im_aprequest_update=>check_emp_in_cc_struc
+                  EXPORTING
+                    i_userpos  = lv_plans
+                    i_ccownpos = lv_ccplans
+                  IMPORTING
+                    e_invalid  = e_invalid.
+                IF e_invalid EQ 'X'.
+                  e_return-parnr   = i_user.
+                  e_return-message = |User not related to the Cost Center|.
+                  EXIT.
+                ENDIF.
+
+**             Get the Cost Center owner level in the organization
+*              zcl_im_aprequest_update=>get_emp_org_level(
+*                EXPORTING
+*                  i_pernr = lv_ccpernr
+*                IMPORTING
+*                  e_level = lv_cclvl ).
+              ENDIF.
+            ENDIF."Added by C90007373 in TR DSDK9A01SS for Appropriation Request CC Mapping Change in AT Power O&M
+          ENDIF.
+        ENDIF.
+    ENDCASE.
+
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Private Method ZCL_IM_APREQUEST_UPDATE->VALIDATE_EY_APPR_REQ
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_POSNR_EY                     TYPE        IMA_POSNR
+* | [--->] I_XIMAK                        TYPE        IMAK
+* | [--->] I_EY_APPROVE_CHK               TYPE        CHAR1(optional)
+* | [--->] I_LIMIT_EXCEED                 TYPE        CHAR1(optional)
+* | [--->] T_RAIA9                        TYPE        ZIM_RAIA9_TY(optional)
+* | [<---] E_SUBRC                        TYPE        SY-SUBRC
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD validate_ey_appr_req.
+**----------------------------------------------------------------------*
+** Checks
+** 1.Raise error message if Appropriation request is not approved
+** 2.Check total amount of all the tasks under the Project should not
+**   exceed the Project Amount
+**----------------------------------------------------------------------*
+*  CALL FUNCTION 'ZIM_VALIDATE_EY_APPR_REQ'
+*    EXPORTING
+*      i_posnr_ey         = i_posnr_ey
+*      i_ximak            = i_ximak
+*      i_ey_approve_chk   = i_ey_approve_chk
+*      i_limit_exceed     = i_limit_exceed
+*    TABLES
+*      t_raia9            = t_raia9
+*    EXCEPTIONS
+*      ar_ey_not_approved = 1
+*      ar_limit_exceeded  = 2
+*      OTHERS             = 3.
+*  IF sy-subrc <> 0.
+*    e_subrc = '4'.
+*    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+*            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+*  ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_IM_APREQUEST_UPDATE=>VALIDATE_USER
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] I_PARTNER                      TYPE        RIHPATAB(optional)
+* | [--->] I_MASTER_DATA                  TYPE        RIMAK(optional)
+* | [--->] I_INVESTMENT_PROGRAM           TYPE        BADIAPPREQ_PROGALLOCTAB(optional)
+* | [--->] I_IMAKPA                       TYPE        IMAKPA(optional)
+* | [--->] I_INVESTMENT_REASON            TYPE        RIMAKPITAB(optional)
+* | [--->] I_AKTYP                        TYPE        AKTYP(optional)
+* | [<---] E_INVALID                      TYPE        CHAR1
+* | [<---] E_RETURN                       TYPE        ZFI_AR_MESSAGES_STRUC
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD validate_user.
+
+    DATA : lv_ivart       TYPE ima_ivart,
+           lt_ptnr_checks TYPE zfi_ar_patnr_chks_tbl,
+           lv_imparvw     TYPE parvw,
+           lv_pernr       TYPE pernr_d,
+           lv_imuser      TYPE usrid,
+           lv_kostl       TYPE kostl,
+           lr_grade       TYPE zhr_range_trfst,
+           lv_hierarchy   TYPE char1,
+           lv_level       TYPE numc2,
+           lv_user        TYPE usrid,
+           lt_return      TYPE STANDARD TABLE OF zfi_ar_messages_struc,
+           lt_arpartner   TYPE STANDARD TABLE OF zps_arpartner,
+           wa_jest        TYPE jest,
+           lr_level       TYPE zhr_range_level,
+           ls_text        TYPE text120.
+    DATA: r_stat TYPE RANGE OF j_status.
+*   "Check Status Create & Rejected only
+    r_stat = VALUE #( ( sign = 'I' option = 'EQ' low = 'I0001' ) ( sign = 'I' option = 'EQ' low = 'I0359' ) ).
+    CHECK sy-tcode EQ 'IMA11' OR sy-tcode EQ 'IMA2N'.
+    IF i_aktyp NE 'I'.
+*  First created and then change the status.
+      SELECT SINGLE *
+        INTO wa_jest
+        FROM jest
+       WHERE objnr EQ i_master_data-objnr
+         AND stat  IN r_stat
+         AND inact EQ ''.
+      CHECK sy-subrc EQ 0.
+    ENDIF.
+    CALL FUNCTION 'HR_READ_INFOTYPE_AUTHC_DISABLE'.
+
+    zcl_im_aprequest_update=>get_rule_dettails(
+      EXPORTING
+        i_rule_id     = '90000054'
+      IMPORTING
+        t_ptnr_checks = lt_ptnr_checks ).
+
+*  "Check Whetehr AR Partner type EN, YU is mandtory not based on Investment Reason
+*    IF i_master_data-ivart EQ 'EN'.
+*   "Fetch Reason of Investment from TVARV Table
+    DATA(lt_rinvestment) =  zcl_sd_utility=>get_tvarv( name = 'ZAR_IZWEK' type = 'S' ).
+    IF lt_rinvestment[] IS NOT INITIAL.
+*     "Check whether its related to YU paramerer not
+      LOOP AT i_investment_reason INTO DATA(lwa_int_reason) WHERE izwek IN lt_rinvestment. ENDLOOP.
+      IF sy-subrc EQ 0.
+        READ TABLE i_partner INTO DATA(lwa_partner1) WITH KEY parvw  = 'YU'.
+        IF sy-subrc NE 0.
+          e_invalid = 'X'.
+          e_return-ivart  = i_master_data-ivart.
+          e_return-parvw = 'YU'.
+          e_return-vtext = get_partnertext( e_return-parvw ).
+          e_return-message = |Partner YU is missing.|.
+          APPEND e_return TO lt_return.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+*    ENDIF.
+    READ TABLE lt_ptnr_checks TRANSPORTING NO FIELDS WITH KEY artype = i_master_data-ivart.
+    IF sy-subrc NE 0.
+      lv_ivart = 'OT'.
+    ELSE.
+      lv_ivart = i_master_data-ivart.
+    ENDIF.
+
+    LOOP AT  i_partner INTO DATA(ls_partner).
+      CLEAR: e_invalid, e_return.
+      READ TABLE lt_ptnr_checks TRANSPORTING NO FIELDS WITH KEY artype = lv_ivart "i_master_data-ivart
+                                                                patype = ls_partner-parvw.
+      IF sy-subrc EQ 0.
+        CLEAR : lv_kostl, lv_level, lv_hierarchy, lv_imparvw, lv_imuser, lv_user, lr_level.
+        REFRESH lr_grade.
+
+        LOOP AT lt_ptnr_checks INTO DATA(ls_ptnr_checks) WHERE artype EQ lv_ivart "i_master_data-ivart
+                                                           AND patype EQ ls_partner-parvw.
+          CASE ls_ptnr_checks-fieldname.
+            WHEN 'CCTYPE'.
+              CASE ls_ptnr_checks-value.
+                WHEN 'RQ'.
+                  lv_kostl =  i_imakpa-akostl.
+                WHEN 'RS'.
+                  lv_kostl = i_master_data-vkostl.
+                WHEN 'I1'.
+                  lv_imparvw = ls_ptnr_checks-value.
+              ENDCASE.
+            WHEN 'GRADE'.
+              APPEND VALUE #( sign = 'I' option = 'EQ' low = ls_ptnr_checks-value ) TO lr_grade.
+            WHEN 'HIERARCHY'.
+              lv_hierarchy = ls_ptnr_checks-value.
+            WHEN 'LEVEL'.
+              lv_level = ls_ptnr_checks-value.
+              APPEND VALUE #( sign = 'I' option = 'EQ' low = ls_ptnr_checks-value ) TO lr_level.
+          ENDCASE.
+        ENDLOOP.
+        IF sy-subrc EQ 0.
+          IF lv_hierarchy EQ 'A'.
+            READ TABLE lr_grade INTO DATA(ls_grade) INDEX 1.
+            IF sy-subrc EQ 0.
+              SEARCH sy-abcde FOR ls_grade-low.
+              DATA(lv_number) = sy-fdpos.
+              DO 10 TIMES.
+                IF lv_number LT 0.
+                  EXIT.
+                ENDIF.
+                APPEND VALUE #( sign = 'I' option = 'EQ' low = sy-abcde+lv_number(1) ) TO lr_grade.
+                IF sy-abcde+lv_number(1) EQ 'C'.
+                  APPEND VALUE #( sign = 'I' option = 'EQ' low = 'C1' ) TO lr_grade.
+                ENDIF.
+                lv_number = lv_number - 1.
+              ENDDO.
+            ENDIF.
+          ENDIF.
+          IF lv_hierarchy EQ 'S'.
+            READ TABLE i_partner INTO DATA(ls_impartner) WITH KEY parvw = lv_imparvw.
+            IF sy-subrc EQ 0.
+              lv_imuser = ls_impartner-parnr.
+            ENDIF.
+          ENDIF.
+
+          lv_user = ls_partner-parnr.
+          zcl_im_aprequest_update=>user_grade_check_with_level(
+            EXPORTING
+              i_user    = lv_user
+              i_kostl   = lv_kostl
+              i_trfst   = lr_grade
+              i_level   = lv_level
+              i_heir    = lv_hierarchy
+              i_imuser  = lv_imuser
+              ir_level  = lr_level
+            IMPORTING
+              e_invalid = e_invalid
+              e_return  = e_return ).
+        ENDIF.
+
+        IF e_invalid EQ 'X'.
+          e_return-ivart   = i_master_data-ivart.
+          e_return-parvw   = ls_partner-parvw.
+          e_return-vtext   = get_partnertext( ls_partner-parvw ).
+          e_return-parnr   = ls_partner-parnr.
+          APPEND e_return TO lt_return.
+        ENDIF.
+
+      ELSE.
+
+        READ TABLE i_investment_program INTO DATA(ls_investment_program) INDEX 1.
+        IF sy-subrc EQ 0.
+          SELECT SINGLE parnr FROM zim_pos_partner
+            INTO @DATA(ls_defpartner)
+           WHERE posid EQ @ls_investment_program-program_pos
+             AND zim_rectype EQ 'D'
+             AND patner EQ @ls_partner-parvw.
+          IF sy-subrc EQ 0.
+            IF ls_defpartner NE ls_partner-parnr AND sy-subrc EQ 0.
+              e_invalid = 'X'.
+              e_return-ivart   = i_master_data-ivart.
+              e_return-parvw   = ls_partner-parvw.
+              e_return-vtext   = get_partnertext( ls_partner-parvw ).
+              e_return-parnr   = ls_partner-parnr.
+              e_return-message = |Not maintained as per Table ZIM_POS_PARTNER. Partner Should be { ls_defpartner }|.
+              APPEND e_return TO lt_return.
+            ENDIF.
+          ELSE.
+            REFRESH: lt_arpartner.
+            SELECT * FROM zps_arpartner
+              INTO TABLE lt_arpartner
+             WHERE parvw EQ ls_partner-parvw
+               AND inact EQ ''.
+            CHECK sy-subrc EQ 0.
+            READ TABLE lt_arpartner INTO DATA(lwa_arpartner) WITH KEY parnr = ls_partner-parnr.
+            IF sy-subrc NE 0.
+             CLEAR: ls_text.
+*            IF ls_defpartner NE ls_partner-parnr AND sy-subrc EQ 0.
+              e_invalid = 'X'.
+              e_return-ivart  = i_master_data-ivart.
+              e_return-parvw = ls_partner-parvw.
+              e_return-vtext   = get_partnertext( ls_partner-parvw ).
+              e_return-parnr = ls_partner-parnr.
+              LOOP AT lt_arpartner INTO lwa_arpartner.
+               IF sy-tabix EQ '1'.
+                ls_text = lwa_arpartner-parnr.
+               ELSE.
+                ls_text = ls_text && 'or' && lwa_arpartner-parnr.
+               ENDIF.
+              ENDLOOP.
+              e_return-message = |Not maintained as per Table ZPS_ARPARTNER. Partner should be { ls_text }|.
+              APPEND e_return TO lt_return.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+*   Display Error Messages
+    IF lt_return[] IS NOT INITIAL.
+      CALL FUNCTION 'REUSE_ALV_POPUP_TO_SELECT'
+        EXPORTING
+          i_title               = 'Partner Validations'
+          i_selection           = ' '
+          i_zebra               = 'X'
+          i_screen_start_column = 0
+          i_screen_start_line   = 0
+          i_screen_end_column   = 0
+          i_screen_end_line     = 0
+          i_tabname             = 'LT_RETURN'
+          i_structure_name      = 'ZFI_AR_MESSAGES_STRUC'
+        TABLES
+          t_outtab              = lt_return
+        EXCEPTIONS
+          program_error         = 1.
+      e_invalid = 'X'.
+    ENDIF.
+
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Private Method ZCL_IM_APREQUEST_UPDATE->__CHANGE_PARTNER
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] AKTYP                          TYPE        AKTYP
+* | [--->] MASTER_DATA                    TYPE        RIMAK
+* | [--->] INVESTMENT_PROGRAM             TYPE        BADIAPPREQ_PROGALLOCTAB
+* | [--->] PARTNER                        TYPE        RIHPATAB
+* | [--->] APPREQUEST_STATUS              TYPE        TBAPIAPPREQSTATUS
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD __change_partner.
+* This Method is also responsible to change partner
+* ALready logic is implemented in ZFI_PARTNER_CHECK but it will
+* be called when user will be in TAB1 ( Partner Tab) otherwise it
+* will be skipped
+* To overcome above issue, below logic is implemented at time of Save
+* CRQ No: 28668
+* Transport No 943978
+    DATA: lwa_status        TYPE bapiappreqstatus,
+          lv_change_partner,
+          lv_program        TYPE badiappreq_progalloc.
+    DATA: lv_tabix TYPE sy-tabix.
+    DATA: lv_parnr TYPE i_parnr.
+    DATA: lv_fname TYPE string VALUE '(SAPLIPAR)XIHPA[]'.
+    DATA: lwa_partner TYPE rihpa.
+    DATA: lt_pos_partner  TYPE STANDARD TABLE OF zim_pos_partner,
+          lwa_pos_partner TYPE zim_pos_partner.
+
+    FIELD-SYMBOLS: <ft_xihpa> TYPE tt_ihpavb,
+                   <fs_xihpa> TYPE ihpavb.
+* Check SAP Transaction Category
+* Change or Delete
+    CHECK aktyp EQ 'I' OR aktyp EQ 'U'.
+* "Check AR Status
+* "AR Status should be created or rejected
+    LOOP AT  apprequest_status INTO lwa_status.
+      CASE lwa_status-status.
+*     "Status is created
+        WHEN 'I0001' OR 'I0359'.
+          lv_change_partner = 'X'.
+          EXIT.
+*     "Status is For Approval then check the previous status
+*     "it should be Rejected or Created in DB means user is
+*     "submitting it
+        WHEN 'I0354'.
+*       "Check Previous status
+*        lv_change_partner = me->__get_status( master_data ).
+*        EXIT.
+      ENDCASE.
+    ENDLOOP.
+
+    CHECK lv_change_partner IS NOT INITIAL.
+* "Get Investment program name
+    READ TABLE investment_program INTO lv_program INDEX 1.
+    CHECK sy-subrc EQ 0 AND lv_program-program_pos IS NOT INITIAL.
+* "Fetch Default partner for the Position ID
+    SELECT * FROM zim_pos_partner
+      INTO TABLE lt_pos_partner
+     WHERE posid EQ lv_program-program_pos
+       AND zim_rectype EQ 'D'.
+
+    CHECK lt_pos_partner[] IS NOT INITIAL.
+    CLEAR: lv_change_partner.
+* "Check whether whether default partner is already there in Partner
+* "table then no need to change and flag lv_change_partner will be
+* "initial
+    LOOP AT partner INTO lwa_partner.
+*   "Read partner maintained in custom table
+      READ TABLE lt_pos_partner INTO lwa_pos_partner
+                            WITH KEY patner = lwa_partner-parvw.
+      CHECK sy-subrc EQ 0.
+*   "If its not matching with current partner
+      CHECK lwa_partner-parnr NE lwa_pos_partner-parnr.
+*   "Set the flag
+      lv_change_partner = 'X'.
+      EXIT.
+    ENDLOOP.
+* "Check flag is not initial means some parnter is not matching
+* "with default partner maintained in DB table
+    CHECK lv_change_partner EQ 'X'.
+* "Get Partner name from run time and modify it
+    ASSIGN (lv_fname) TO <ft_xihpa>.
+* "Check whether is assigned or not
+    CHECK <ft_xihpa> IS ASSIGNED.
+
+    LOOP AT <ft_xihpa> ASSIGNING <fs_xihpa>.
+*  "Read partner from DB table
+      READ TABLE lt_pos_partner INTO lwa_pos_partner
+                            WITH KEY patner = <fs_xihpa>-parvw.
+      CHECK sy-subrc EQ 0.
+*   Check default partner with DB partner
+      CHECK <fs_xihpa>-parnr NE lwa_pos_partner-parnr.
+*   "Change Partner
+      <fs_xihpa>-parnr = lwa_pos_partner-parnr.
+*   "Update Flag so partner would be changed
+      IF <fs_xihpa>-updkz IS INITIAL.
+        <fs_xihpa>-updkz = 'U'.
+      ENDIF.
+*    EXIT.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Private Method ZCL_IM_APREQUEST_UPDATE->__GET_STATUS
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] MASTER_DATA                    TYPE        RIMAK
+* | [<-()] PARTNER_CHECK                  TYPE        CHAR1
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD __get_status.
+* This is method is reponsible to check status in DB
+* if its created or rejected then set the flag
+* CRQ No: 28668
+* Transport No 943978
+    DATA: lt_jest  TYPE STANDARD TABLE OF jest,
+          lwa_jest TYPE jest.
+
+    SELECT * FROM jest INTO TABLE lt_jest
+     WHERE objnr EQ master_data-objnr
+       AND inact NE 'X'.
+    IF sy-subrc NE 0.
+      partner_check = 'X'.
+    ENDIF.
+*  LOOP AT lt_jest INTO lwa_jest
+*                 WHERE ( STAT EQ 'I0359' OR
+*                         STAT EQ 'I0001' ).
+*  ENDLOOP.
+*  IF sy-subrc EQ 0.
+*   partner_check = 'X'.
+*  ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Private Method ZCL_IM_APREQUEST_UPDATE->__RAISE_COST_MESSAGE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] AKTYP                          TYPE        AKTYP
+* | [--->] MASTER_DATA                    TYPE        RIMAK
+* | [--->] APPREQUEST_STATUS              TYPE        TBAPIAPPREQSTATUS
+* | [--->] VARIANTS                       TYPE        RIMAVTAB(optional)
+* | [--->] I_TOTVALUE                     TYPE        INVKOS(optional)
+* | [EXC!] ERROR_WITH_MESSAGE
+* | [EXC!] WARNING_WITH_MESSAGE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD __raise_cost_message.
+* This method is responsible to raise message if total estimated
+* cost is more than 25,000 $
+* CRQ No: 109623
+* Transport No DSDK949451
+* CRQ 112907
+* Transport No:DSDK960216, Remove Error message to Warning if AR
+* value is less than 25K USD
+    DATA: lwa_status TYPE bapiappreqstatus.
+    DATA: lv_created,
+          lv_estimated_cost TYPE bp_wgt,
+          lt_bpge           TYPE tt_bpge,
+          lwa_bpge          TYPE type_t_bpge,
+          lwa_variants      LIKE LINE OF  variants,
+          lv_totvalue       TYPE invkos,
+          lv_txn_curr       TYPE waers,
+          lv_fname          TYPE char30 VALUE '(SAPLAIA9)GD_TXN_CURR'.
+    FIELD-SYMBOLS: <fs_curr> TYPE waers.
+    DATA: lv_string TYPE string,
+          lv_answer.
+    CHECK master_data-ivart NE 'MM'.                        "CRQ112799
+* Check SAP Transaction Category
+* Change or Create
+    CHECK aktyp EQ 'I' OR aktyp EQ 'U'.
+* Check AR Status
+* AR Status should be created or rejected
+    LOOP AT  apprequest_status INTO lwa_status.
+      CASE lwa_status-status.
+*     "Status is created or Rejected (Fields opens in rejected status)
+        WHEN 'I0001' OR 'I0359'.
+*       "Set Indicator to display message
+          lv_created = 'X'.
+          EXIT.
+*     "Status is For Approval then check the previous status
+*     "it should be Rejected or Created in DB means user just
+*     "submit it then message should display
+        WHEN 'I0354'.
+*   "   Check Previous status
+          lv_created = me->__get_status( master_data ).
+          EXIT.
+      ENDCASE.
+    ENDLOOP.
+
+    lv_totvalue = i_totvalue.
+
+* Fetch variant
+    READ TABLE variants INTO  lwa_variants INDEX 1.
+
+    IF lv_totvalue IS INITIAL.
+* "Fetch from Database
+      SELECT objnr
+              wrttp
+              twaer
+              wtges
+         INTO TABLE lt_bpge
+         FROM bpge
+         WHERE objnr EQ lwa_variants-objnr
+           AND wrttp EQ '39'.
+
+      READ TABLE lt_bpge INTO lwa_bpge INDEX 1.
+      IF sy-subrc EQ 0.
+        lv_totvalue = lwa_bpge-wtges.
+        lwa_variants-t001waers = lwa_bpge-twaer.
+      ENDIF.
+    ELSE.
+      ASSIGN (lv_fname) TO <fs_curr>.
+      IF <fs_curr> IS ASSIGNED.
+        lwa_variants-t001waers = <fs_curr>.
+      ENDIF.
+    ENDIF.
+* "Check If total estimated cost is more than 130 percent of total
+* "approved cost.
+* "Fetch Estimated Cost and Covert it to USD
+    zcl_im_aprequest_update=>convert_amt_usd(
+                        EXPORTING
+                         i_amount   = lv_totvalue "master_data-usr06
+                         i_currency = lwa_variants-t001waers "master_data-use06
+                         IMPORTING
+                          e_amount  = lv_estimated_cost ).
+
+* "Display message at the time of creation only
+    IF lv_created IS NOT INITIAL.
+      IF lv_estimated_cost LT '25000'.
+        sy-msgid = 'ZFI'.
+        sy-msgty = 'W'.                                     "DSDK960216
+        sy-msgno = '000'.
+        sy-msgv1 = 'Total Estmd/CEP should be >= 25,000 USD'(024).
+        RAISE error_with_message.
+      ELSEIF lv_estimated_cost GE '25000' AND lv_estimated_cost LT '100000'.
+        CONCATENATE text-020 text-021 INTO lv_string SEPARATED BY space.
+*    "Popup confirmation here
+        CALL FUNCTION 'POPUP_TO_CONFIRM'
+          EXPORTING
+            titlebar              = text-005
+            text_question         = lv_string
+            text_button_1         = text-022
+            text_button_2         = text-023
+            display_cancel_button = ' '
+          IMPORTING
+            answer                = lv_answer
+          EXCEPTIONS
+            text_not_found        = 1
+            OTHERS                = 2.
+        IF lv_answer NE '1'.
+          sy-msgid = 'ZFI'.
+          sy-msgty = 'E'.
+          sy-msgno = '000'.
+          sy-msgv1 = text-020.
+          sy-msgv2 = text-021.
+          RAISE error_with_message.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Private Method ZCL_IM_APREQUEST_UPDATE->__RAISE_MESSAGE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] AKTYP                          TYPE        AKTYP
+* | [--->] MASTER_DATA                    TYPE        RIMAK
+* | [--->] APPREQUEST_STATUS              TYPE        TBAPIAPPREQSTATUS
+* | [EXC!] ERROR_WITH_MESSAGE
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD __raise_message.
+* This method is responsible to raise message if total estimated
+* cost is more than 130% of total approved cost
+* CRQ No: 28668
+* Transport No 943978
+    DATA: lwa_status TYPE bapiappreqstatus.
+    DATA: lv_created,
+          lv_forapproval,
+          lv_difference     TYPE ima_usr06,
+          lv_percent        TYPE int4,
+          lv_quest          TYPE text255,
+          lv_answer,
+          lv_estimated_cost TYPE bp_wgt,
+          lv_approved_cost  TYPE bp_wgt..
+* Check SAP Transaction Category
+* Change or Delete
+    CHECK aktyp EQ 'I' OR aktyp EQ 'U'.
+* Message should come only for budgted AR
+    CHECK master_data-usr10 EQ 'X' .
+
+* Check AR Status
+* AR Status should be created or rejected
+    LOOP AT  apprequest_status INTO lwa_status.
+      CASE lwa_status-status.
+*     "Status is created or Rejected (Fields opens in rejected status)
+        WHEN 'I0001' OR 'I0359'.
+*       "Set Indicator to display message
+          lv_created = 'X'.
+          EXIT.
+*     "Status is For Approval then check the previous status
+*     "it should be Rejected or Created in DB means user just
+*     "submit it then message should display
+        WHEN 'I0354'.
+*   "   Check Previous status
+          lv_created = me->__get_status( master_data ).
+          EXIT.
+      ENDCASE.
+    ENDLOOP.
+* "Check If total estimated cost is more than 130 percent of total
+* "approved cost.
+* "Fetch Estimated Cost and Covert it to USD
+    zcl_im_aprequest_update=>convert_amt_usd(
+                        EXPORTING
+                         i_amount   = master_data-usr06
+                         i_currency = master_data-use06
+                         IMPORTING
+                          e_amount  = lv_estimated_cost ).
+
+* "Fetch Approved Cost and Covert it to USD
+    zcl_im_aprequest_update=>convert_amt_usd(
+                        EXPORTING
+                         i_amount   = master_data-usr07
+                         i_currency = master_data-use07
+                         IMPORTING
+                          e_amount  = lv_approved_cost ).
+
+    IF lv_approved_cost IS NOT INITIAL.
+      TRY.
+          lv_percent = ( lv_estimated_cost / lv_approved_cost ) * 100.
+        CATCH cx_root.
+      ENDTRY.
+    ENDIF.
+* "Check whther total estimated cost is more than 130 % of approved
+* "Cost
+    CHECK lv_percent GE 130.
+* "Display Pop up at the time of creation only
+    IF lv_created IS NOT INITIAL.
+*   "Pop up shouldnt come in BG mode
+      IF sy-batch NE 'X'.
+        CONCATENATE text-015 text-016   INTO lv_quest SEPARATED BY space.
+*     "Raise Popup Message
+        CALL FUNCTION 'POPUP_TO_CONFIRM'
+          EXPORTING
+            titlebar              = text-014
+            text_question         = lv_quest
+            text_button_1         = text-017
+            icon_button_1         = 'ICON_OKAY'
+            text_button_2         = text-018
+            icon_button_2         = 'ICON_CANCEL'
+            display_cancel_button = ' '
+*           popup_type            = i_popup_type
+          IMPORTING
+            answer                = lv_answer.
+        CASE lv_answer.
+          WHEN '1'.
+*         "Do Nothing and let AR save it
+          WHEN '2'.
+*         "Raise Error so user can change the vlue
+            RAISE error_with_message.
+        ENDCASE.
+      ENDIF.
+    ENDIF.
+* "If status is for approval then message should come as warning
+    IF lv_forapproval IS NOT INITIAL.
+*   " No need to raise it in BG mode
+      IF sy-batch NE 'X'.
+        sy-msgid = '26'.
+        sy-msgty = 'W'.
+        sy-msgno = '000'.
+        sy-msgv1 = 'Total Estimated cost is 130 percent of total approved buget'(019).
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
+ENDCLASS.
