@@ -1,0 +1,45 @@
+FUNCTION zwf_fetch_grade.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     REFERENCE(I_PERNR) OPTIONAL
+*"     REFERENCE(I_USER) TYPE  ANY OPTIONAL
+*"     REFERENCE(I_JOB) TYPE  ANY OPTIONAL
+*"     REFERENCE(I_DATE) TYPE  DATUM DEFAULT SY-DATUM
+*"  EXPORTING
+*"     REFERENCE(I_LEVEL) TYPE  CHAR2
+*"     REFERENCE(I_GRADE) TYPE  P_CPGR1
+*"----------------------------------------------------------------------
+  DATA: lv_stell TYPE stell,
+        lv_pernr TYPE persno,
+        lv_pa0001 TYPE pa0001.
+  CLEAR: gv_date.
+  lv_stell = i_job.
+  lv_pernr = i_pernr.
+  IF i_date IS INITIAL.
+   gv_date = sy-datum.
+  ELSE.
+   gv_date = i_date.
+  ENDIF.
+* "check job
+  IF lv_stell IS INITIAL.
+*   " Check employee no
+    IF lv_pernr IS INITIAL.
+      IF i_user IS NOT INITIAL.
+*       "Fetch Employee no assigned to user id
+        PERFORM get_pernr USING i_user lv_pernr.
+*       "Fetch Job
+        PERFORM get_pa0001 USING lv_pernr lv_pa0001.
+        lv_stell = lv_pa0001-stell.
+      ENDIF.
+    ELSE.
+*     "Fetch Job
+      PERFORM get_pa0001 USING lv_pernr lv_pa0001.
+      lv_stell = lv_pa0001-stell.
+    ENDIF.
+  ELSE.
+    lv_stell = i_job.
+  ENDIF.
+* "Responsible to get level from job from HRP1005
+  PERFORM get_job_grade USING lv_stell  i_level i_grade.
+ENDFUNCTION.
