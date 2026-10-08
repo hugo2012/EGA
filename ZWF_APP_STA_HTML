@@ -1,0 +1,133 @@
+FUNCTION ZWF_APP_STA_HTML.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  TABLES
+*"      IT_APP_STAT TYPE  ZPPM_WF_APP_STAT_TT
+*"      ET_APP_STAT_HTML TYPE  ZTT_SOLISTI1
+*"----------------------------------------------------------------------
+
+"Function Group - ZWF_MOBILE
+
+  DATA lv_date(10) TYPE c.
+  DATA: lv_text1   TYPE char255,
+    lv_discurr TYPE text20.
+
+  CLEAR : it_html_contents.
+  lv_text1 =  '<table border="1" width="70%"><col width="40" /><col width="20" />'.
+  PERFORM fill_lines6 USING lv_text1.
+  CLEAR: lv_text1.
+
+  lv_text1 =  '<col width="40" /><col width="20" /><col width="20" /><col width="20" />'.
+  PERFORM fill_lines6 USING lv_text1.
+  CLEAR: lv_text1.
+
+
+  lv_text1 = '<tr>'.
+  PERFORM fill_lines6 USING lv_text1.
+  CLEAR: lv_text1.
+
+  CONCATENATE '<th>' '<p><code><B>'
+                      'Seq no' '</B></p></code>' '</th>'
+                INTO  lv_text1.
+  PERFORM fill_lines6 USING lv_text1.
+  CLEAR: lv_text1.
+
+  CONCATENATE '<th>' '<p><code><B>'
+                      'Role' '</B></p></code>' '</th>'
+                INTO  lv_text1.
+  PERFORM fill_lines6 USING lv_text1.
+  CLEAR: lv_text1.
+
+  CONCATENATE '<th>' '<p><code><B>'
+                      'Status' '</B></p></code>' '</th>'
+                INTO  lv_text1.
+  PERFORM fill_lines6 USING lv_text1.
+  CLEAR: lv_text1.
+
+  CONCATENATE '<th>' '<p><code><B>'
+                      'Approver' '</B></p></code>' '</th>'
+                INTO  lv_text1.
+  PERFORM fill_lines6 USING lv_text1.
+  CLEAR: lv_text1.
+
+  CONCATENATE '<th>' '<p><code><B>'
+                      'Approved By' '</B></p></code>' '</th>'
+                INTO  lv_text1.
+  PERFORM fill_lines6 USING lv_text1.
+  CLEAR: lv_text1.
+
+  CONCATENATE '<th>' '<p><code><B>'
+                      'Approved on' '</B></p></code>' '</th>'
+                INTO  lv_text1.
+  PERFORM fill_lines6 USING lv_text1.
+  CLEAR: lv_text1.
+
+  lv_text1 =  '</tr>'.
+  PERFORM fill_lines6 USING lv_text1.
+  CLEAR: lv_text1, wa_body.
+
+  LOOP AT IT_APP_STAT INTO DATA(ls_ppm).
+*    CHECK wa_ppm-tdline IS NOT INITIAL.
+    "1
+    lv_text1 =  '<tr>'.
+    PERFORM fill_lines6 USING lv_text1.
+    CLEAR: lv_text1.
+
+    CONCATENATE '<td>' '<p><code><B>'
+                ls_ppm-seqno '</B></p></code>' '</td>'
+          INTO  lv_text1.
+    PERFORM fill_lines6 USING lv_text1.
+    CLEAR: lv_text1.
+
+    CONCATENATE '<td>' '<p><code><B>'
+                ls_ppm-role '</B></p></code>' '</td>'
+          INTO  lv_text1.
+    PERFORM fill_lines6 USING lv_text1.
+    CLEAR: lv_text1.
+
+    CONCATENATE '<td>' '<p><code><B>'
+                ls_ppm-status '</B></p></code>' '</td>'
+          INTO  lv_text1.
+    PERFORM fill_lines6 USING lv_text1.
+    CLEAR: lv_text1.
+
+    CONCATENATE '<td>' '<p><code><B>'
+                ls_ppm-app_name '</B></p></code>' '</td>'
+          INTO  lv_text1.
+
+    PERFORM fill_lines6 USING lv_text1.
+    CLEAR: lv_text1.
+
+    CONCATENATE '<td>' '<p><code><B>'
+        ls_ppm-app_by '</B></p></code>' '</td>'
+          INTO  lv_text1.
+
+    PERFORM fill_lines6 USING lv_text1.
+    CLEAR: lv_text1.
+
+    WRITE ls_ppm-ap_datetim TO lv_date  DD/MM/YYYY .
+
+    CONCATENATE '<td>' '<p><code><B>'
+        lv_date '</B></p></code>' '</td>'
+                 INTO  lv_text1.
+
+    PERFORM fill_lines6 USING lv_text1.
+    CLEAR: lv_text1.
+
+    lv_text1 =  '</tr>'.
+    PERFORM fill_lines6 USING lv_text1.
+    CLEAR: lv_text1, wa_body.
+
+
+  ENDLOOP.
+  lv_text1 =  '</table>'.
+  PERFORM fill_lines6 USING lv_text1.
+  CLEAR: lv_text1.
+  IF it_html_contents is NOT INITIAL.
+   LOOP AT it_html_contents ASSIGNING FIELD-SYMBOL(<fs_html_content>).
+     APPEND INITIAL LINE TO et_app_stat_html ASSIGNING FIELD-SYMBOL(<fs_app_html>).
+     MOVE-CORRESPONDING <fs_html_content> to <fs_app_html>.
+   ENDLOOP.
+  ENDIF.
+  CLEAR : it_html_contents.
+ENDFUNCTION.
