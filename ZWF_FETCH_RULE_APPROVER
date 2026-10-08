@@ -1,0 +1,177 @@
+*----------------------------------------------------------------------*
+* Author:                 Lakshmi Narayana.S (C90000248)               *
+* Date:                   21.02.2011                                   *
+* Change request number:  New Development                              *
+* Trouble ticket number:                                               *
+* Description:            For the given Rule identify the approvers and*
+*                         return the values.                           *
+* Version:                1.0                                          *
+* Technical Design Specification(s): SAP-TDS-MM-D-                     *
+*----------------------------------------------------------------------*
+* Change History:                                                      *
+* ---------------                                                      *
+* Ver    Date      UserID     TransportNo         Description          *
+* 1.0  21.02.2011 C90000248   DSDK932685     Initial Development       *
+*----------------------------------------------------------------------*
+FUNCTION zwf_fetch_rule_approver.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     REFERENCE(RULE_NO) TYPE  HRSOBJECT-OBJID
+*"     REFERENCE(RULE_PARA1) TYPE  CHAR30 OPTIONAL
+*"     REFERENCE(RULE_PARA2) TYPE  CHAR30 OPTIONAL
+*"     REFERENCE(RULE_PARA3) TYPE  CHAR30 OPTIONAL
+*"     REFERENCE(RULE_PARA4) TYPE  CHAR30 OPTIONAL
+*"     REFERENCE(RULE_PARA5) TYPE  CHAR30 OPTIONAL
+*"  TABLES
+*"      ACTOR_TAB STRUCTURE  SWHACTOR
+*"  EXCEPTIONS
+*"      NO_APPROVER
+*"----------------------------------------------------------------------
+
+  DATA: new_ac_container  LIKE   swcont OCCURS 0.
+  DATA: it_act_cont TYPE STANDARD TABLE OF swcontdef,
+        wa_act_cont TYPE swcontdef.
+  DATA: lv_fname TYPE char30.
+  DATA: lv_lineno TYPE n.
+  DATA: lv_robject TYPE hrobjec_14.
+  DATA: lt_actor_tab TYPE STANDARD TABLE OF swhactor,
+        lwa_actor_tab TYPE swhactor,
+        wa_actor_tab  TYPE swhactor,
+        lt_hrobject TYPE hrobject_t,
+        lwa_hrobject TYPE hrobject,
+        lt_relation_data_tab TYPE p1001tab,
+        lwa_relation_data_tab TYPE p1001,
+        lv_pernr              TYPE pernr_d.
+  FIELD-SYMBOLS: <fs_rvalue> TYPE ANY.
+
+* Get Rule Attribute
+  CALL FUNCTION 'RH_GET_HRS_CONTAINER'
+    EXPORTING
+      act_otype              = 'AC'
+      act_objid              = rule_no
+    TABLES
+      act_cont_def           = it_act_cont
+    EXCEPTIONS
+      no_container_def_found = 1
+      OTHERS                 = 2.
+  IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    RAISE no_approver.
+  ENDIF.
+* Fill Rule Element
+  SORT it_act_cont BY editorder.
+
+  LOOP AT it_act_cont INTO wa_act_cont.
+    lv_lineno = sy-tabix.
+    CONCATENATE 'RULE_PARA'
+                lv_lineno INTO lv_fname.
+    ASSIGN (lv_fname) TO <fs_rvalue>.
+    CHECK sy-subrc EQ 0.
+* Poupulting container for excecuting rule
+    swc_set_element  new_ac_container wa_act_cont-editelem <fs_rvalue>.
+  ENDLOOP.
+
+* Execute Rule and get approver
+  CONCATENATE 'AC'
+              rule_no INTO lv_robject.
+  CALL FUNCTION 'RH_GET_ACTORS'
+    EXPORTING
+      act_object                = lv_robject
+    TABLES
+      actor_container           = new_ac_container
+      actor_tab                 = actor_tab
+    EXCEPTIONS
+      no_active_plvar           = 1
+      no_actor_found            = 2
+      exception_of_role_raised  = 3
+      no_valid_agent_determined = 4
+      no_container              = 5
+      OTHERS                    = 6.
+  IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    RAISE no_approver.
+  ENDIF.
+
+  lt_actor_tab[] = actor_tab[].
+  REFRESH: actor_tab[].
+
+  LOOP AT lt_actor_tab INTO lwa_actor_tab.
+
+    REFRESH: lt_hrobject, lt_relation_data_tab.
+    CLEAR: lwa_hrobject, lv_pernr, wa_actor_tab.
+
+    IF lwa_actor_tab-otype EQ 'S'.
+*     get employee from position
+      lwa_hrobject-plvar = '01'.
+      lwa_hrobject-otype = lwa_actor_tab-otype.
+      lwa_hrobject-objid = lwa_actor_tab-objid.
+      APPEND lwa_hrobject TO lt_hrobject.
+      CALL FUNCTION 'HR_GET_EMPLOYEES_ON_POSITION'
+        EXPORTING
+          objecttab         = lt_hrobject
+          begda             = sy-datum
+          endda             = sy-datum
+        IMPORTING
+          relation_data_tab = lt_relation_data_tab
+        EXCEPTIONS
+          read_1001_error   = 1
+          OTHERS            = 2.
+      IF sy-subrc <> 0.
+*         MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+      ENDIF.
+
+      LOOP AT lt_relation_data_tab  INTO lwa_relation_data_tab.
+        CONDENSE lwa_relation_data_tab-sobid.
+        lv_pernr = lwa_relation_data_tab-sobid.
+
+        CALL FUNCTION 'PTRV_CONVERT_PERNR_TO_USERID'
+          EXPORTING
+            personnel_number  = lv_pernr
+            validity_date     = sy-datum
+          IMPORTING
+            user_id           = wa_actor_tab-objid
+          EXCEPTIONS
+            user_id_not_found = 1
+            OTHERS            = 2.
+        IF sy-subrc <> 0.
+*         MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+        ENDIF.
+        IF wa_actor_tab-objid IS NOT INITIAL.
+          wa_actor_tab-otype = 'US'.
+          APPEND wa_actor_tab TO actor_tab.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+
+    ELSEIF lwa_actor_tab-otype EQ 'P'.
+       lv_pernr = lwa_actor_tab-objid.
+      CALL FUNCTION 'PTRV_CONVERT_PERNR_TO_USERID'
+        EXPORTING
+          personnel_number  = lv_pernr
+          validity_date     = sy-datum
+        IMPORTING
+          user_id           = wa_actor_tab-objid
+        EXCEPTIONS
+          user_id_not_found = 1
+          OTHERS            = 2.
+      IF sy-subrc <> 0.
+*         MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+      ENDIF.
+      IF wa_actor_tab-objid IS NOT INITIAL.
+        wa_actor_tab-otype = 'US'.
+        APPEND wa_actor_tab TO actor_tab.
+      ENDIF.
+
+    ELSEIF lwa_actor_tab-otype EQ 'US'.
+      MOVE-CORRESPONDING lwa_actor_tab TO wa_actor_tab.
+      APPEND wa_actor_tab TO actor_tab.
+    ENDIF.
+  ENDLOOP.
+
+ENDFUNCTION.
