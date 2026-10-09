@@ -21,7 +21,14 @@ public section.
   constants GC_ZCATEGORY_ANNUAL type ZDE_CATEGORY value 'ANNUAL' ##NO_TEXT.
   constants GC_ZCATEGORY_VALUE type ZDE_CATEGORY value 'VALUE' ##NO_TEXT.
   constants GC_ZCATEGORY_DEFAULT type ZDE_CATEGORY value 'DEFAULT' ##NO_TEXT.
-
+  constants GC_AREA_ROUTE_APPR type ZDE_ROUTE value '01' ##NO_TEXT.
+  constants GC_MANAGIN_ROUTE_APPR type ZDE_ROUTE value '02' ##NO_TEXT.
+  constants GC_FIN_ROUTE_APPR type ZDE_ROUTE value '03' ##NO_TEXT.
+  class-data GC_PENDING type ZPPM_STATUS value 'Pending' ##NO_TEXT.
+  class-data GC_APPROVED type ZPPM_STATUS value 'Approved' ##NO_TEXT.
+  class-data GC_REJECTED type ZPPM_STATUS value 'Rejected' ##NO_TEXT.
+  class-data GC_R type SYST-INPUT value 'R' ##NO_TEXT.
+  class-data GC_A type SYST-INPUT value 'A' ##NO_TEXT.
   class-methods GET_WF_RECIPIENT_LIST
     importing
       !OBJECT_TYPE type /RPM/OBJECT_TYPE
@@ -78,10 +85,71 @@ public section.
     exporting
       value(EV_ZCATEGORY) type ZDE_CATEGORY
       value(ET_MSG) type /RPM/TT_MESSAGES .
-protected section. "test transport
+  class-methods GET_APPR_ROUTE_AREA
+    importing
+      value(IV_DECISION_GUID) type RPM_TV_GUID
+      !IT_PPM030 type ZPPM_TT_WF_030 "#EC "#EC CI_VALPAR
+    exporting
+      value(ET_AGENTS_AREA) type ZPPM_TT_WF_AGENT .
+  class-methods GET_APPR_ROUTE_FIN
+    importing
+      value(IV_DECISION_GUID) type RPM_TV_GUID
+      !IT_PPM030 type ZPPM_TT_WF_030 "#EC "#EC CI_VALPAR
+    exporting
+      value(ET_AGENTS_FIN) type ZPPM_TT_WF_AGENT .
+  class-methods GET_APPR_ROUTE_MNGR
+    importing
+      value(IV_DECISION_GUID) type RPM_TV_GUID
+      !IT_PPM030 type ZPPM_TT_WF_030 "#EC "#EC CI_VALPAR
+    exporting
+      value(ET_AGENTS_MNGR) type ZPPM_TT_WF_AGENT .
+  class-methods GET_CEO_END_CHAIN
+    importing
+      value(IV_DECISION_GUID) type RPM_TV_GUID
+      !IT_PPM030 type ZPPM_TT_WF_030 "#EC "#EC CI_VALPAR
+    exporting
+      value(ET_AGENTS_CEO_CHAIN) type ZPPM_TT_WF_AGENT .
+  class-methods GET_APPR_LEVEL_1
+    importing
+      value(IV_DECISION_GUID) type RPM_TV_GUID
+      !IT_PPM030 type ZPPM_TT_WF_030 "#EC "#EC CI_VALPAR
+    exporting
+      value(ET_AGENTS_LEVEL_1) type ZPPM_TT_WF_AGENT .
+  class-methods VALIDATE_PARALLEL_PROCESS
+    importing
+      value(IV_DECISION_GUID) type RPM_TV_GUID
+      value(IV_DECISION_ID) type RPM_TV_EXTID
+      value(IT_AGENTS_ALL) type ZPPM_WF_APP_TT
+    exporting
+      value(EV_PARALLEL) type BOOLE_D
+      value(ET_AGENTS_AREA) type ZPPM_WF_APP_TT
+      value(ET_AGENTS_MANAGING) type ZPPM_WF_APP_TT
+      value(ET_AGENTS_FIN) type ZPPM_WF_APP_TT
+      value(ET_AGENTS_CEO_CHAIN) type ZPPM_WF_APP_TT
+      value(ET_AGENTS_LEVEL1) type ZPPM_WF_APP_TT
+      value(EV_AGENTS_AREA_EXIST) type BOOLE_D
+      value(EV_AGENTS_MANAGING_EXIST) type BOOLE_D
+      value(EV_AGENTS_FIN_EXIST) type BOOLE_D
+      value(EV_AGENTS_CEO_EXIST) type BOOLE_D
+      value(EV_TOTAL_FIN_APPR) type INT4
+      value(EV_TOTAL_MT_APPR) type INT4
+      value(EV_TOTAL_AREA_APPR) type INT4
+      value(EV_TOTAL_FINAL_APPR) type INT4
+      value(ET_WF_ACTOR_N3FIN) type BAPI_ECMVAL_WF_ADDRESS_TAB
+      value(EV_WF_ACTOR_N3FIN) type BOOLE_D .
+  class-methods SET_APP_REJ_STATUS
+    importing
+      !IV_LEVEL type INT4
+      !IV_DECISION type SYST-INPUT
+      !IV_USER type SWP_AGENT optional
+      !IV_DECISION_GUID type RPM_TV_GUID
+    changing
+      !ET_APP_STAT type ZPPM_WF_APP_STAT_TT
+      !ET_APP_STAT_HTML type ZTT_SOLISTI1 .
+PROTECTED SECTION. "test transport
 *"* protected components of class ZCL_PPM_WORKFLOW
 *"* do not include other source files here!!!
-private section."check transport
+PRIVATE SECTION. "check transport
 *"* private components of class ZCL_PPM_WORKFLOW
 *"* do not include other source files here!!!
 ENDCLASS.
@@ -96,26 +164,26 @@ CLASS ZCL_PPM_WORKFLOW IMPLEMENTATION.
 * +-------------------------------------------------------------------------------------------------+
 * | [<-()] RESULT                         TYPE REF TO DATA
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-method BI_OBJECT~DEFAULT_ATTRIBUTE_VALUE.
+METHOD bi_object~default_attribute_value.
 
-endmethod.
+ENDMETHOD.
 
 
 * <SIGNATURE>---------------------------------------------------------------------------------------+
 * | Instance Public Method ZCL_PPM_WORKFLOW->BI_OBJECT~EXECUTE_DEFAULT_METHOD
 * +-------------------------------------------------------------------------------------------------+
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-method BI_OBJECT~EXECUTE_DEFAULT_METHOD.
+METHOD bi_object~execute_default_method.
 
-endmethod.
+ENDMETHOD.
 
 
 * <SIGNATURE>---------------------------------------------------------------------------------------+
 * | Instance Public Method ZCL_PPM_WORKFLOW->BI_OBJECT~RELEASE
 * +-------------------------------------------------------------------------------------------------+
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-method BI_OBJECT~RELEASE.
-endmethod.
+METHOD bi_object~release.
+ENDMETHOD.
 
 
 * <SIGNATURE>---------------------------------------------------------------------------------------+
@@ -124,9 +192,9 @@ endmethod.
 * | [--->] LPOR                           TYPE        SIBFLPOR
 * | [<-()] RESULT                         TYPE REF TO BI_PERSISTENT
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-method BI_PERSISTENT~FIND_BY_LPOR.
+METHOD bi_persistent~find_by_lpor.
 
-endmethod.
+ENDMETHOD.
 
 
 * <SIGNATURE>---------------------------------------------------------------------------------------+
@@ -134,18 +202,18 @@ endmethod.
 * +-------------------------------------------------------------------------------------------------+
 * | [<-()] RESULT                         TYPE        SIBFLPOR
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-method BI_PERSISTENT~LPOR.
+METHOD bi_persistent~lpor.
 
-endmethod.
+ENDMETHOD.
 
 
 * <SIGNATURE>---------------------------------------------------------------------------------------+
 * | Instance Public Method ZCL_PPM_WORKFLOW->BI_PERSISTENT~REFRESH
 * +-------------------------------------------------------------------------------------------------+
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-method BI_PERSISTENT~REFRESH.
+METHOD bi_persistent~refresh.
 
-endmethod.
+ENDMETHOD.
 
 
 * <SIGNATURE>---------------------------------------------------------------------------------------+
@@ -157,7 +225,7 @@ endmethod.
 * | [<---] ET_USER_TAB                    TYPE        TSWHACTOR
 * | [<---] ET_EMAIL_TAB                   TYPE        /RPM/TT_WF_ACTORS
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-METHOD CREATE_USER_EMAIL_LIST.
+METHOD create_user_email_list.
 
   DATA: lt_wf_recipient TYPE /rpm/tt_wf_recip,
         ls_wf_recipient TYPE /rpm/wf_recip,
@@ -200,6 +268,270 @@ ENDMETHOD.
 
 
 * <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>GET_APPR_LEVEL_1
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_DECISION_GUID               TYPE        RPM_TV_GUID
+* | [--->] IT_PPM030                      TYPE        ZPPM_TT_WF_030
+* | [<---] ET_AGENTS_LEVEL_1              TYPE        ZPPM_TT_WF_AGENT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_appr_level_1.
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*02.10.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+*                                          The logic is used for
+*                                          getting the Level  1 approver
+*
+*
+*---------------------------------------------------------------------
+    CLEAR et_agents_level_1.
+    IF it_ppm030 IS NOT INITIAL.
+      et_agents_level_1 = VALUE #(
+            FOR ls_lv11 IN it_ppm030
+            WHERE ( seqno = 1 )
+            (
+              otype = ls_lv11-otype
+              agentid    = ls_lv11-appr
+              seqno = ls_lv11-seqno  parvw = ls_lv11-parvw )
+          ).
+
+    ELSE.
+      " 1. Select Level 1 approvers (P3 / Sequence 1) from ZPPM030
+      SELECT otype AS otype,
+             appr AS agent_id,
+             seqno AS seq_no,
+             parvw
+        FROM zppm030
+        WHERE guid   = @iv_decision_guid
+          AND seqno = 1                  " Sequence 1 = Level 1 (P3)
+        ORDER BY seq_no ASCENDING
+        INTO TABLE @DATA(lt_l1_approvers).
+         " 2. Populate target table with combined AGENTID and ZZDE_SEQNO
+          IF sy-subrc = 0.
+            et_agents_level_1 = VALUE #(
+              FOR ls_lv1 IN lt_l1_approvers
+              (
+                otype = ls_lv1-otype
+                agentid    = ls_lv1-agent_id
+                seqno = ls_lv1-seq_no  parvw = ls_lv1-parvw )
+            ).
+          ENDIF.
+    ENDIF.
+
+  ENDMETHOD. "#EC CI_VALPAR
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>GET_APPR_ROUTE_AREA
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_DECISION_GUID               TYPE        RPM_TV_GUID
+* | [--->] IT_PPM030                      TYPE        ZPPM_TT_WF_030
+* | [<---] ET_AGENTS_AREA                 TYPE        ZPPM_TT_WF_AGENT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_appr_route_area.
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*02.10.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+*                                          The logic is used for
+*                                          getting approver role routing Area
+*
+*
+*---------------------------------------------------------------------
+    CLEAR et_agents_area.
+    IF it_ppm030 IS NOT INITIAL.
+      " 1. Select matching PARVW routes from ZPPM043
+      SELECT parvw
+        FROM zppm043
+        WHERE route = @zcl_ppm_workflow=>gc_area_route_appr
+        INTO TABLE @DATA(lt_zppm043).
+
+      IF sy-subrc = 0 AND lt_zppm043 IS NOT INITIAL.
+        " 2. Filter IT_PPM030 using a LOOP with READ TABLE to check existence
+        LOOP AT it_ppm030 ASSIGNING FIELD-SYMBOL(<fs_030>) WHERE guid = iv_decision_guid.
+          READ TABLE lt_zppm043 WITH KEY parvw = <fs_030>-parvw TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            APPEND VALUE #(
+              otype     = <fs_030>-otype
+              agentid    =  <fs_030>-appr
+              seqno = <fs_030>-seqno
+              parvw = <fs_030>-parvw
+            ) TO et_agents_area.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+
+    ELSE.
+      SELECT a~otype, a~appr AS agent_id,a~seqno
+        FROM zppm030 AS a
+        INNER JOIN zppm043 AS b
+          ON a~parvw = b~parvw
+        WHERE a~guid  = @iv_decision_guid
+          AND b~route =  @zcl_ppm_workflow=>gc_area_route_appr" Route 01 = Area
+        ORDER BY a~seqno ASCENDING     " Preserves sequence 1 -> 2 -> 3
+        INTO TABLE @DATA(lt_area_approvers).
+        IF sy-subrc IS INITIAL.
+          et_agents_area = VALUE #(
+            FOR ls_area IN lt_area_approvers (
+              otype     = ls_area-otype
+              agentid    = ls_area-agent_id
+              seqno = ls_area-seqno
+              parvw = <fs_030>-parvw
+            )
+          ).
+        ENDIF.
+
+     ENDIF.
+
+  ENDMETHOD. "#EC CI_VALPAR
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>GET_APPR_ROUTE_FIN
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_DECISION_GUID               TYPE        RPM_TV_GUID
+* | [--->] IT_PPM030                      TYPE        ZPPM_TT_WF_030
+* | [<---] ET_AGENTS_FIN                  TYPE        ZPPM_TT_WF_AGENT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_appr_route_fin.
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*02.10.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+*                                          The logic is used for
+*                                          getting approver role routing Fincance
+*
+*
+*---------------------------------------------------------------------
+    CLEAR et_agents_fin.
+
+     IF it_ppm030 IS NOT INITIAL.
+      " 1. Select matching PARVW routes from ZPPM043
+      SELECT parvw
+        FROM zppm043
+        WHERE route = @zcl_ppm_workflow=>gc_fin_route_appr
+        INTO TABLE @DATA(lt_zppm043).
+
+      IF sy-subrc = 0 AND lt_zppm043 IS NOT INITIAL.
+        " 2. Filter IT_PPM030 using a LOOP with READ TABLE to check existence
+        LOOP AT it_ppm030 ASSIGNING FIELD-SYMBOL(<fs_030>) WHERE guid = iv_decision_guid.
+          READ TABLE lt_zppm043 WITH KEY parvw = <fs_030>-parvw TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            APPEND VALUE #(
+              otype     = <fs_030>-otype
+              agentid    =  <fs_030>-appr
+              seqno = <fs_030>-seqno
+              parvw = <fs_030>-parvw
+            ) TO et_agents_fin.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+
+    ELSE.
+
+      SELECT a~otype, a~appr AS agent_id,seqno
+        FROM zppm030 AS a
+        INNER JOIN zppm043 AS b
+          ON a~parvw = b~parvw
+        WHERE a~guid  = @iv_decision_guid
+          AND b~route = @zcl_ppm_workflow=>gc_fin_route_appr         " Route 03 = Finance
+        ORDER BY a~seqno ASCENDING     " Preserves sequence 1 -> 2 -> 3
+        INTO  TABLE @DATA(lt_fin_approvers).
+      IF sy-subrc IS INITIAL.
+        et_agents_fin = VALUE #(
+          FOR ls_fin IN lt_fin_approvers (
+            otype     = ls_fin-otype
+            agentid    =  ls_fin-agent_id
+            seqno = ls_fin-seqno
+            parvw = <fs_030>-parvw
+          )
+        ).
+      ENDIF.
+     ENDIF.
+  ENDMETHOD. "#EC CI_VALPAR
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>GET_APPR_ROUTE_MNGR
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_DECISION_GUID               TYPE        RPM_TV_GUID
+* | [--->] IT_PPM030                      TYPE        ZPPM_TT_WF_030
+* | [<---] ET_AGENTS_MNGR                 TYPE        ZPPM_TT_WF_AGENT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_appr_route_mngr.
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*02.10.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+*                                          The logic is used for
+*                                          getting approver role routing MT Team
+*
+*
+*---------------------------------------------------------------------
+
+    CLEAR et_agents_mngr.
+
+    IF it_ppm030 IS NOT INITIAL.
+      " 1. Select matching PARVW routes from ZPPM043
+      SELECT parvw
+        FROM zppm043
+        WHERE route = @zcl_ppm_workflow=>gc_managin_route_appr
+        INTO TABLE @DATA(lt_zppm043).
+
+      IF sy-subrc = 0 AND lt_zppm043 IS NOT INITIAL.
+        " 2. Filter IT_PPM030 using a LOOP with READ TABLE to check existence
+        LOOP AT it_ppm030 ASSIGNING FIELD-SYMBOL(<fs_030>) WHERE guid = iv_decision_guid.
+          READ TABLE lt_zppm043 WITH KEY parvw = <fs_030>-parvw TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            APPEND VALUE #(
+              otype      = <fs_030>-otype
+              agentid    =  <fs_030>-appr
+              seqno = <fs_030>-seqno
+              parvw = <fs_030>-parvw
+            ) TO et_agents_mngr.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+
+    ELSE.
+      SELECT a~otype, a~appr AS agent_id,seqno
+        FROM zppm030 AS a
+        INNER JOIN zppm043 AS b
+          ON a~parvw = b~parvw
+        WHERE a~guid  = @iv_decision_guid
+          AND b~route = @zcl_ppm_workflow=>gc_managin_route_appr" Route 02 = Managing team
+        ORDER BY a~seqno ASCENDING     " Preserves sequence 1 -> 2 -> 3
+        INTO  TABLE @DATA(lt_mngr_approvers).
+      IF sy-subrc IS INITIAL.
+       et_agents_mngr = VALUE #(
+          FOR ls_mngr IN lt_mngr_approvers (
+            otype      = ls_mngr-otype
+            agentid    = ls_mngr-agent_id
+            seqno = ls_mngr-seqno
+            parvw = <fs_030>-parvw
+          )
+        ).
+      ENDIF.
+    ENDIF.
+  ENDMETHOD. "#EC CI_VALPAR
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
 * | Static Public Method ZCL_PPM_WORKFLOW=>GET_CATEGORY_WFTYPE
 * +-------------------------------------------------------------------------------------------------+
 * | [--->] IV_BUCKET_ID_CHILD             TYPE        /RPM/TV_EXTID
@@ -207,7 +539,7 @@ ENDMETHOD.
 * | [<---] EV_ZCATEGORY                   TYPE        ZDE_CATEGORY
 * | [<---] ET_MSG                         TYPE        /RPM/TT_MESSAGES
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-  METHOD GET_CATEGORY_WFTYPE.
+  METHOD get_category_wftype.
 ***********************************************************************
 *  M O D I F I C A T I O N    L O G                                   *
 ***********************************************************************
@@ -293,6 +625,68 @@ ENDMETHOD.
 
 
 * <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>GET_CEO_END_CHAIN
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_DECISION_GUID               TYPE        RPM_TV_GUID
+* | [--->] IT_PPM030                      TYPE        ZPPM_TT_WF_030
+* | [<---] ET_AGENTS_CEO_CHAIN            TYPE        ZPPM_TT_WF_AGENT
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD get_ceo_end_chain.
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*02.10.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+*                                          The logic is used for
+*                                          getting Final chain approver
+*
+*
+*---------------------------------------------------------------------
+
+  DATA: lt_all_approvers TYPE zppm_tt_wf_030.
+
+   CLEAR et_agents_ceo_chain.
+
+  " 1. Select all entries for the GUID ordered by sequence number ascending
+  IF it_ppm030 IS NOT INITIAL.
+    lt_all_approvers = CORRESPONDING #( it_ppm030 ).
+  ELSE.
+    SELECT otype ,"     AS otype,
+           appr, "AS agent_id,
+           seqno, "  AS seq_no,
+           parvw  "  AS funct
+      FROM zppm030
+      WHERE guid = @iv_decision_guid
+      ORDER BY seqno ASCENDING
+      INTO CORRESPONDING FIELDS OF TABLE @lt_all_approvers.
+    IF sy-subrc <> 0 OR lt_all_approvers IS INITIAL.
+      RETURN.
+    ENDIF.
+  ENDIF.
+
+
+  " 2. Find the index position where FUNCT = 'YE' (CEO)
+  READ TABLE lt_all_approvers WITH KEY parvw  = 'YE' TRANSPORTING NO FIELDS.
+  IF sy-subrc = 0.
+    DATA(lv_start_idx) = sy-tabix.
+    " Extract from 'YE' to the end of the list
+    et_agents_ceo_chain = VALUE #(
+      FOR i = lv_start_idx THEN i + 1 WHILE i <= lines( lt_all_approvers )
+      (
+        otype = lt_all_approvers[ i ]-otype
+        agentid    =  lt_all_approvers[ i ]-appr
+        seqno = lt_all_approvers[ i ]-seqno
+        parvw = lt_all_approvers[ i ]-parvw )
+    ).
+
+  ENDIF.
+  ENDMETHOD. "#EC CI_VALPAR
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
 * | Static Public Method ZCL_PPM_WORKFLOW=>GET_PARENT_BUCKET
 * +-------------------------------------------------------------------------------------------------+
 * | [--->] BUCKET_GUID_CHILD              TYPE        /RPM/TV_GUID
@@ -320,7 +714,7 @@ ENDMETHOD.
         ON a~guid = b~guid
       WHERE a~external_id = @lv_root_id
        INTO ( @DATA(lv_bucket_id_parent),@DATA(lv_ext_id_parent), @DATA(lv_bucket_name_parent) ).
-      IF sy-subrc is INITIAL.
+      IF sy-subrc IS INITIAL.
           bucket_id_parent    = lv_ext_id_parent.
           bucket_guid_parent  = lv_bucket_id_parent.
           bucket_name_parent  = lv_bucket_name_parent.
@@ -337,7 +731,7 @@ ENDMETHOD.
 * | [<---] BUCKET_ID_PARENT               TYPE        /RPM/TV_EXTID
 * | [<---] BUCKET_NAME_PARENT             TYPE        /RPM/TV_SHARED_DESCRIPTION
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-  METHOD GET_PARENT_BUCKET_BY_EXTID.
+  METHOD get_parent_bucket_by_extid.
 
     CHECK bucket_extid_child IS NOT INITIAL.
 
@@ -357,7 +751,7 @@ ENDMETHOD.
         ON a~guid = b~guid
       WHERE a~external_id = @lv_root_id
        INTO ( @DATA(lv_bucket_id_parent),@DATA(lv_ext_id_parent), @DATA(lv_bucket_name_parent) ).
-      IF sy-subrc is INITIAL.
+      IF sy-subrc IS INITIAL.
           bucket_id_parent    = lv_ext_id_parent.
           bucket_guid_parent  = lv_bucket_id_parent.
           bucket_name_parent  = lv_bucket_name_parent.
@@ -376,7 +770,7 @@ ENDMETHOD.
 * | [--->] IV_DP_FLAG                     TYPE        XFELD(optional)
 * | [<---] EV_LINK                        TYPE        /RPM/PORTAL_LINK
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-METHOD GET_PORTAL_LINK.
+METHOD get_portal_link.
 
   DATA: lv_logsys TYPE logsys,
         lt_ws_param TYPE olr3_tt_webserver_url_par,
@@ -436,7 +830,7 @@ ENDMETHOD.
 * | [<-->] ACTOR_TAB                      TYPE        TSWHACTOR
 * | [<-->] RECIPIENTS                     TYPE        /RPM/TT_WF_ACTORS
 * +--------------------------------------------------------------------------------------</SIGNATURE>
-METHOD GET_WF_RECIPIENT_LIST.
+METHOD get_wf_recipient_list.
 
   DATA: ls_context      TYPE  /rpm/ts_object_hier,
         lt_acl          TYPE /rpm/tt_aco_permissions,
@@ -608,4 +1002,493 @@ ENDMETHOD.
               .
     ev_zcategory =  COND #( WHEN lv_zcategory IS NOT INITIAL THEN  lv_zcategory  ELSE '' ).
   ENDMETHOD."#EC CI_VALPAR
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>SET_APP_REJ_STATUS
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_LEVEL                       TYPE        INT4
+* | [--->] IV_DECISION                    TYPE        SYST-INPUT
+* | [--->] IV_USER                        TYPE        SWP_AGENT(optional)
+* | [--->] IV_DECISION_GUID               TYPE        RPM_TV_GUID
+* | [<-->] ET_APP_STAT                    TYPE        ZPPM_WF_APP_STAT_TT
+* | [<-->] ET_APP_STAT_HTML               TYPE        ZTT_SOLISTI1
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD set_app_rej_status.
+* based on user decision workflow internal values are updated
+* to approved or rejected
+   DATA: lv_seqno     TYPE seqno,
+        lv_user      TYPE xubname,
+        lt_app_stat  TYPE STANDARD TABLE OF zppm044,
+        lv_retry     TYPE i VALUE 0,
+        lv_locked    TYPE abap_bool VALUE abap_false.
+
+  " 1. Format inputs
+  lv_seqno = iv_level.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = lv_seqno
+    IMPORTING
+      output = lv_seqno.
+
+  IF iv_user IS NOT INITIAL .
+   lv_user = iv_user+2(12).
+  ENDIF.
+
+  " 2. Lock Retry Mechanism (Try 3 times with 1 second delay between attempts)
+  DO 3 TIMES.
+    CALL FUNCTION 'ENQUEUE_EZPPM044'
+      EXPORTING
+        mode_zppm044     = 'E'
+        iv_decision_guid = iv_decision_guid
+        " seqno            = lv_seqno            " <-- Pass new lock key field
+        _scope           = '2'
+      EXCEPTIONS
+        foreign_lock     = 1
+        system_failure   = 2
+        OTHERS           = 3.
+
+    IF sy-subrc = 0.
+      lv_locked = abap_true.
+      EXIT. " Lock acquired successfully, exit retry loop
+    ENDIF.
+
+    " Wait 1 second before the next attempt
+    WAIT UP TO 1 SECONDS.
+  ENDDO.
+
+  " Exit method if lock could not be acquired after 3 retries
+  IF lv_locked = abap_false.
+    " Optional: Raise exception or log message for workflow monitoring
+    RETURN.
+  ENDIF.
+
+  " 3. Read freshest data directly from Database Table ZPPM044
+  SELECT * FROM zppm044
+    INTO TABLE @lt_app_stat
+    WHERE iv_decision_guid = @iv_decision_guid.
+
+  " 4. IF table is empty for first execution, populate from buffer (ET_APP_STAT)
+  IF sy-subrc <> 0 OR lt_app_stat IS INITIAL.
+    IF et_app_stat IS NOT INITIAL.
+      " Copy buffer entries into database format table
+      lt_app_stat = CORRESPONDING #( et_app_stat ).
+
+      " Set mandatory key fields for all initial buffer records
+      LOOP AT lt_app_stat ASSIGNING FIELD-SYMBOL(<ls_init>).
+        <ls_init>-iv_decision_guid = iv_decision_guid.
+        IF <ls_init>-status IS INITIAL.
+          <ls_init>-status = gc_pending. " Default initial status constant
+           CLEAR <ls_init>-ap_datetim .
+           CLEAR <ls_init>-ap_time.
+        ENDIF.
+      ENDLOOP.
+
+      " Insert initial records into ZPPM044 database table
+      INSERT zppm044 FROM TABLE @lt_app_stat.
+    ENDIF.
+   ELSE.
+     IF lv_seqno = 1.
+       "Reset status
+       LOOP AT lt_app_stat ASSIGNING <ls_init>.
+        IF <ls_init>-status IS NOT INITIAL.
+          <ls_init>-status = gc_pending. " Default initial status constant
+           <ls_init>-app_by     = ''.
+           CLEAR <ls_init>-ap_datetim .
+           CLEAR <ls_init>-ap_time.
+        ENDIF.
+      ENDLOOP.
+    ENDIF .
+  ENDIF.
+
+
+  " 5. Update approval status entry for current level (SEQNO)
+  LOOP AT lt_app_stat ASSIGNING FIELD-SYMBOL(<ls_app>) WHERE seqno = lv_seqno.
+
+    IF lv_user IS NOT INITIAL.
+      DATA(ls_user_info) = zcl_ppm_common=>get_user_info( ov_user = lv_user ).
+      <ls_app>-app_by     = ls_user_info-name.
+      <ls_app>-ap_datetim = sy-datum.
+      <ls_app>-ap_time    = sy-uzeit.
+    ENDIF.
+
+    IF iv_decision EQ gc_r.
+      <ls_app>-status = gc_rejected.
+    ELSEIF iv_decision EQ gc_a.
+      <ls_app>-status = gc_approved.
+    ENDIF.
+
+  ENDLOOP.
+
+  " 6. Save updated data back to ZPPM044 table
+  IF sy-subrc = 0 AND lt_app_stat IS NOT INITIAL.
+    MODIFY zppm044 FROM TABLE lt_app_stat.
+    COMMIT WORK AND WAIT.
+  ENDIF.
+
+  " 7. Release Lock
+  CALL FUNCTION 'DEQUEUE_EZPPM044'
+    EXPORTING
+      mode_zppm044     = 'E'
+      iv_decision_guid = iv_decision_guid.
+     " seqno            = lv_seqno            " <-- Pass new lock key field.
+
+  " 8. Pass back updated table to workflow container output
+  et_app_stat = CORRESPONDING zppm_wf_app_stat_tt( lt_app_stat ).
+
+* BEGIN OF Log issue 218.
+  IF et_app_stat IS NOT INITIAL.
+    CLEAR et_app_stat_html[].
+    CALL FUNCTION 'ZWF_APP_STA_HTML'
+      TABLES
+        it_app_stat            = et_app_stat
+        et_app_stat_html       = et_app_stat_html
+              .
+  ENDIF.
+* END OF Log issue 218.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_WORKFLOW=>VALIDATE_PARALLEL_PROCESS
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IV_DECISION_GUID               TYPE        RPM_TV_GUID
+* | [--->] IV_DECISION_ID                 TYPE        RPM_TV_EXTID
+* | [--->] IT_AGENTS_ALL                  TYPE        ZPPM_WF_APP_TT
+* | [<---] EV_PARALLEL                    TYPE        BOOLE_D
+* | [<---] ET_AGENTS_AREA                 TYPE        ZPPM_WF_APP_TT
+* | [<---] ET_AGENTS_MANAGING             TYPE        ZPPM_WF_APP_TT
+* | [<---] ET_AGENTS_FIN                  TYPE        ZPPM_WF_APP_TT
+* | [<---] ET_AGENTS_CEO_CHAIN            TYPE        ZPPM_WF_APP_TT
+* | [<---] ET_AGENTS_LEVEL1               TYPE        ZPPM_WF_APP_TT
+* | [<---] EV_AGENTS_AREA_EXIST           TYPE        BOOLE_D
+* | [<---] EV_AGENTS_MANAGING_EXIST       TYPE        BOOLE_D
+* | [<---] EV_AGENTS_FIN_EXIST            TYPE        BOOLE_D
+* | [<---] EV_AGENTS_CEO_EXIST            TYPE        BOOLE_D
+* | [<---] EV_TOTAL_FIN_APPR              TYPE        INT4
+* | [<---] EV_TOTAL_MT_APPR               TYPE        INT4
+* | [<---] EV_TOTAL_AREA_APPR             TYPE        INT4
+* | [<---] EV_TOTAL_FINAL_APPR            TYPE        INT4
+* | [<---] ET_WF_ACTOR_N3FIN              TYPE        BAPI_ECMVAL_WF_ADDRESS_TAB
+* | [<---] EV_WF_ACTOR_N3FIN              TYPE        BOOLE_D
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD validate_parallel_process.
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*02.10.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+*                                          The logic is used for
+*                                          Identify the logic for parallel route
+*                                          Or Sequential route
+*
+*---------------------------------------------------------------------
+    DATA: ls_user_data  TYPE bapiaddr3,
+          lv_username TYPE bapibname-bapibname.
+    DATA  lt_return   TYPE bapirettab.
+    DATA  lw_address  TYPE bapi_ecmval_wf_address.
+
+    " Default to Sequential Process (abap_false)
+    ev_parallel = abap_false.
+
+    " Data declarations for route tables
+    DATA: lt_area_agents TYPE zppm_tt_wf_agent,
+          lt_mt_agents   TYPE zppm_tt_wf_agent,
+          lt_fin_agents  TYPE zppm_tt_wf_agent,
+          lt_final_chain TYPE zppm_tt_wf_agent,
+          lt_first_agent TYPE zppm_tt_wf_agent,
+          lt_all_approvers  TYPE zppm_tt_wf_030.
+
+    IF iv_decision_id = 'ZDP00' OR iv_decision_id = 'ZDP04' OR iv_decision_id = 'ZDP05'
+      OR iv_decision_id = 'ZDP06'.
+       ev_parallel = abap_false.
+      RETURN.
+    ELSEIF iv_decision_id = 'ZDP01' OR iv_decision_id = 'ZDP02' OR iv_decision_id = 'ZDP03'.
+*      ZDP01, ZDP02, ZDP03
+      SORT it_agents_all ASCENDING BY seqno.
+
+
+      " ------------------------------------------------------------------
+      " Get All the approvers
+      " ------------------------------------------------------------------
+        SELECT guid,
+          seqno,
+          otype,
+          appr,
+          apprname,
+          appamt,
+          status,
+          approle,
+          single_multi,
+          parvw,
+          optional,
+          optemail_user
+        FROM zppm030 AS a
+        "INNER JOIN zppm043 AS b
+        "  ON a~parvw = b~parvw
+        WHERE a~guid  = @iv_decision_guid
+          "AND b~route =  @zcl_ppm_workflow=>gc_area_route_appr" Route 01 = Area
+        ORDER BY a~seqno ASCENDING     " Preserves sequence 1 -> 2 -> 3
+        INTO  CORRESPONDING FIELDS OF TABLE @lt_all_approvers.
+
+       IF sy-subrc IS NOT INITIAL .
+         RETURN.
+       ENDIF.
+
+        DATA(ls_last) = lt_all_approvers[ lines( lt_all_approvers ) ].
+
+      " ------------------------------------------------------------------
+      " 1. GET LEVEL 1 APPROVER (P3 - Portfolio Office / Sequence 1)
+      " ------------------------------------------------------------------
+      zcl_ppm_workflow=>get_appr_level_1(
+        EXPORTING iv_decision_guid = iv_decision_guid
+                  it_ppm030        = lt_all_approvers
+        IMPORTING et_agents_level_1    = lt_first_agent
+      ).
+
+      et_agents_level1 = VALUE #(
+              FOR ls_level1 IN lt_first_agent (
+
+                seqno = ls_level1-seqno
+                actor = VALUE #( ( otype     = ls_level1-otype
+                                  objid    =  ls_level1-agentid ) )
+              )
+              ).
+
+      IF  et_agents_level1 IS NOT INITIAL.
+        LOOP AT et_agents_level1 ASSIGNING FIELD-SYMBOL(<fs_agent_lv1>).
+            DATA(ls_agent_all) = VALUE #( it_agents_all[ seqno = <fs_agent_lv1>-seqno ] OPTIONAL ).
+            MOVE-CORRESPONDING ls_agent_all TO <fs_agent_lv1>.
+        ENDLOOP.
+      ENDIF.
+
+      " ------------------------------------------------------------------
+      " 2. GET PARALLEL ROUTES (Area, Managing Team, Finance)
+      " ------------------------------------------------------------------
+      CALL METHOD zcl_ppm_workflow=>get_appr_route_area
+       EXPORTING
+         iv_decision_guid = iv_decision_guid
+         it_ppm030        = lt_all_approvers
+       IMPORTING
+         et_agents_area   = lt_area_agents
+       .
+
+      et_agents_area = VALUE #(
+              FOR ls_area  IN lt_area_agents (
+                seqno = ls_area-seqno
+                actor = VALUE #( ( otype     = ls_area-otype
+                                  objid    =  ls_area-agentid ) )
+              )
+              ).
+      IF  et_agents_area IS NOT INITIAL.
+        LOOP AT et_agents_area ASSIGNING FIELD-SYMBOL(<fs_agent_area>).
+            IF <fs_agent_area>-seqno <> ls_last-seqno.
+               ls_agent_all = VALUE #( it_agents_all[ seqno = <fs_agent_area>-seqno ] OPTIONAL ).
+              MOVE-CORRESPONDING ls_agent_all TO <fs_agent_area>.
+            ELSE.
+              DELETE et_agents_area WHERE seqno = ls_last-seqno.
+            ENDIF.
+        ENDLOOP.
+      ENDIF.
+      ev_agents_area_exist = COND #( WHEN et_agents_area IS NOT INITIAL THEN abap_true ELSE abap_false ).
+
+      CALL METHOD zcl_ppm_workflow=>get_appr_route_mngr
+       EXPORTING
+         iv_decision_guid = iv_decision_guid
+         it_ppm030        = lt_all_approvers
+       IMPORTING
+         et_agents_mngr   = lt_mt_agents
+       .
+
+      et_agents_managing = VALUE #(
+         FOR ls_managing  IN lt_mt_agents (
+            seqno = ls_managing-seqno
+                actor = VALUE #( ( otype     = ls_managing-otype
+                                  objid    =  ls_managing-agentid ) )
+              )
+         ).
+      IF et_agents_managing IS NOT INITIAL.
+        LOOP AT et_agents_managing ASSIGNING FIELD-SYMBOL(<fs_agent_mt>).
+           IF <fs_agent_mt>-seqno <> ls_last-seqno.
+            ls_agent_all = VALUE #( it_agents_all[ seqno = <fs_agent_mt>-seqno ] OPTIONAL ).
+            MOVE-CORRESPONDING ls_agent_all TO <fs_agent_mt>.
+           ELSE.
+              DELETE et_agents_managing WHERE seqno = ls_last-seqno.
+           ENDIF.
+        ENDLOOP.
+      ENDIF.
+       ev_agents_managing_exist = COND #( WHEN  et_agents_managing IS NOT INITIAL THEN abap_true ELSE abap_false ).
+
+      CALL METHOD zcl_ppm_workflow=>get_appr_route_fin
+        EXPORTING
+          iv_decision_guid = iv_decision_guid
+          it_ppm030        = lt_all_approvers
+        IMPORTING
+          et_agents_fin    = lt_fin_agents.
+
+       DATA(lt_fin_appr) = lt_fin_agents .
+
+       et_agents_fin = VALUE #(
+         FOR ls_fin  IN lt_fin_appr (
+           seqno = ls_fin-seqno
+                actor = VALUE #( ( otype     = ls_fin-otype
+                                  objid    =  ls_fin-agentid ) )
+              )
+         ).
+      IF et_agents_fin IS NOT INITIAL.
+         LOOP AT et_agents_fin ASSIGNING FIELD-SYMBOL(<fs_agent_fin>).
+            IF <fs_agent_fin>-seqno <> ls_last-seqno.
+             ls_agent_all = VALUE #( it_agents_all[ seqno = <fs_agent_fin>-seqno ] OPTIONAL ).
+             MOVE-CORRESPONDING ls_agent_all TO <fs_agent_fin>.
+            ELSE.
+              DELETE et_agents_fin WHERE seqno = ls_last-seqno.
+            ENDIF.
+         ENDLOOP.
+       ENDIF.
+       ev_agents_fin_exist = COND #( WHEN et_agents_fin  IS NOT INITIAL THEN abap_true ELSE abap_false ).
+       IF lt_fin_agents IS NOT INITIAL.
+         "Check YD-CFO exist in the Finance chain, then the notification to N-3 Finance.
+          DATA(ls_cfo) = VALUE #( lt_fin_agents[ parvw = 'YD' ] OPTIONAL ).
+          IF ls_cfo IS NOT INITIAL AND ls_cfo-agentid IS NOT INITIAL.
+             LOOP AT lt_fin_agents INTO DATA(ls_user) WHERE parvw ='YS'. "N3-Finance
+                 CLEAR: lt_return[],ls_user_data.
+                 lv_username  = ls_user-agentid.
+                 CALL FUNCTION 'BAPI_USER_GET_DETAIL'
+                   EXPORTING
+                     username = lv_username
+                   IMPORTING
+                     address  = ls_user_data
+                   TABLES
+                     return   = lt_return.
+                 IF NOT ls_user_data-e_mail IS INITIAL.
+                   CLEAR lw_address.
+                   lw_address-e_mail = ls_user_data-e_mail.
+                   APPEND lw_address TO et_wf_actor_n3fin.
+                 ENDIF.
+                 ""Remove N3-Finance - just receive Notification out of the approver chain
+                 DELETE et_agents_fin WHERE seqno = ls_user-seqno .
+            ENDLOOP.
+
+          ENDIF.
+       ENDIF.
+        ev_wf_actor_n3fin = COND #( WHEN et_wf_actor_n3fin IS NOT INITIAL THEN abap_true ELSE abap_false ).
+      " ------------------------------------------------------------------
+      " 3. GET CEO & FINAL CHAIN (Method GET_CEO_END_CHAIN)
+      " ------------------------------------------------------------------
+       CALL METHOD zcl_ppm_workflow=>get_ceo_end_chain
+        EXPORTING
+          iv_decision_guid = iv_decision_guid
+          it_ppm030        = lt_all_approvers
+        IMPORTING
+          et_agents_ceo_chain    = lt_final_chain
+        .
+
+       et_agents_ceo_chain = VALUE #(
+         FOR ls_ceo_chain  IN lt_final_chain (
+           seqno = ls_ceo_chain-seqno
+                actor = VALUE #( ( otype     = ls_ceo_chain-otype
+                                  objid    =  ls_ceo_chain-agentid ) )
+              )
+         ).
+
+        IF et_agents_ceo_chain IS NOT INITIAL.
+         LOOP AT et_agents_ceo_chain ASSIGNING FIELD-SYMBOL(<fs_agent_ceo>).
+             ls_agent_all = VALUE #( it_agents_all[ seqno = <fs_agent_ceo>-seqno ] OPTIONAL ).
+             MOVE-CORRESPONDING ls_agent_all TO <fs_agent_ceo>.
+         ENDLOOP.
+        ENDIF.
+
+      " In case of No CEO
+       " 2. Fallback A: Grab the highest sequence approver in ZPPM030
+        IF et_agents_ceo_chain IS INITIAL.
+            ls_agent_all = VALUE #( it_agents_all[ seqno = ls_last-seqno ] OPTIONAL ).
+            APPEND ls_agent_all TO et_agents_ceo_chain .
+        ENDIF.
+
+        ev_agents_ceo_exist = COND #( WHEN et_agents_ceo_chain IS NOT INITIAL THEN abap_true ELSE abap_false ).
+      " ------------------------------------------------------------------
+      " 4. Check for missing/unassigned agents across all routes
+      " An unassigned agent occurs if the list is initial or AGENTID is blank/invalid (e.g., length <= 2)
+      " ------------------------------------------------------------------
+      LOOP AT lt_area_agents ASSIGNING FIELD-SYMBOL(<fs_area>).
+        IF <fs_area>-agentid IS INITIAL OR strlen( <fs_area>-agentid ) <= 2.
+          RETURN. " Fallback to sequential (ev_parallel remains initial)
+        ENDIF.
+      ENDLOOP.
+
+      LOOP AT lt_mt_agents ASSIGNING FIELD-SYMBOL(<fs_mt>).
+        IF <fs_mt>-agentid IS INITIAL OR strlen( <fs_mt>-agentid ) <= 2.
+          RETURN. " Fallback to sequential (ev_parallel remains initial)
+        ENDIF.
+      ENDLOOP.
+
+      LOOP AT lt_fin_agents ASSIGNING FIELD-SYMBOL(<fs_fin>).
+        IF <fs_fin>-agentid IS INITIAL OR strlen( <fs_fin>-agentid ) <= 2.
+          RETURN. " Fallback to sequential (ev_parallel remains initial)
+        ENDIF.
+      ENDLOOP.
+
+       LOOP AT lt_final_chain ASSIGNING FIELD-SYMBOL(<fs_ceo>).
+        IF <fs_ceo>-agentid IS INITIAL OR strlen( <fs_ceo>-agentid ) <= 2.
+          RETURN. " Fallback to sequential (ev_parallel remains initial)
+        ENDIF.
+      ENDLOOP.
+
+
+      " ------------------------------------------------------------------
+      " 5. EVALUATE PARALLEL SWITCH CRITERIA
+      " ------------------------------------------------------------------
+      " Total parallel approvers in the middle tier (Area + MT + Finance)
+      DATA(lv_parallel_count) = lines( et_agents_area ) + lines( et_agents_managing ) + lines( et_agents_fin ).
+
+      ev_total_area_appr = lines( et_agents_area ).
+      ev_total_mt_appr = lines( et_agents_managing  ).
+      ev_total_fin_appr =  lines( et_agents_fin ).
+      ev_total_final_appr =  lines( et_agents_ceo_chain ).
+
+      " RULE 1: If there are 0 or only 1 parallel approvers, run Sequential
+      IF lv_parallel_count <= 1.
+        ev_parallel = abap_false.
+        RETURN.
+      ENDIF.
+
+      " RULE 2: If flow is strictly Level 1 (P3) directly into CEO/Final Chain with NO parallel middle steps
+      IF lt_first_agent IS NOT INITIAL
+         AND lt_final_chain IS NOT INITIAL
+         AND lv_parallel_count = 0.
+        ev_parallel = abap_false.
+        RETURN.
+      ENDIF.
+
+      " RULE 3: If 2 or more valid parallel approvers exist across middle routes -> Enable Parallel Path
+      IF lv_parallel_count >= 2.
+        DATA(lv_parallel_count_area) = lines( et_agents_area  ).
+        DATA(lv_parallel_count_mt) = lines( et_agents_managing ).
+        DATA(lv_parallel_count_fin) = lines( et_agents_fin ).
+
+        IF lv_parallel_count_area > 0.
+          DATA(lv_count) = 1.
+        ENDIF.
+        IF lv_parallel_count_mt > 0.
+         lv_count = lv_count + 1.
+        ENDIF.
+        IF lv_parallel_count_fin > 0.
+         lv_count = lv_count + 1.
+        ENDIF.
+        IF lv_count >= 2 .
+          ev_parallel = abap_true. " Route to Parallel process
+        ELSE.
+          ev_parallel = abap_false.
+           RETURN.
+        ENDIF.
+      ELSE.
+        ev_parallel = abap_false.
+        RETURN.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD. "#EC CI_VALPAR
 ENDCLASS.
