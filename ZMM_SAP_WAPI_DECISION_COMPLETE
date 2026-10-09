@@ -1,0 +1,178 @@
+*----------------------------------------------------------------------*
+* Author:                 Lakshmi Narayana.S (C90000248)               *
+* Date:                   21.02.2011                                   *
+* Change request number:  New Development                              *
+* Trouble ticket number:                                               *
+* Description:            For the given Work Item & Approver ID combi- *
+*                         nation check whether the work item exists for*
+*                         or not and if Yes, Execute the work item in  *
+*                         background as per the decision made.         *
+* Version:                1.0                                          *
+* Technical Design Specification(s): SAP-TDS-MM-D-                     *
+*----------------------------------------------------------------------*
+* Change History:                                                      *
+* ---------------                                                      *
+* Ver    Date      UserID     TransportNo         Description          *
+* 1.0  21.02.2011 C90000248   DSDK932685     Initial Development       *
+* 2.0  24.12.2012 C90000111   DSDK936296         CRQ11740              *
+* 3.0  22.01.2014 C90000248   DSDK941345   Raise relavent message if   *
+*                             CRQ23301    employee is blocked for pay- *
+*                                         roll processing.             *
+* 4.0  26.01.2016 C90000248   DSDK947083  Breakfix for Leave approval  *
+*                             CRQ105543  via mobile during payroll lock*
+* 4.1  13.04.2016 C90000825   DSDK947083 Custom messages for Rec       *
+* 5.0  11.06.2016 C90000248   DSDK948606 Breakfix for Leave approval   *
+*                             CRQ105543  via mobile during payroll lock*
+* 6.0  02.04.2019 C90000825   DSDK967318 Release the PR if Accept button*
+*                                        is clicked on the email       *
+*****************************************************************************
+*----------------------------------------------------------------------*
+FUNCTION zmm_sap_wapi_decision_complete.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     VALUE(WORKITEM_ID) TYPE  SWR_STRUCT-WORKITEMID OPTIONAL
+*"     VALUE(LANGUAGE) LIKE  SWR_STRUCT-WILANGUAGE DEFAULT SY-LANGU
+*"     VALUE(USER) TYPE  SYUNAME DEFAULT SY-UNAME
+*"     VALUE(DECISION_KEY) TYPE  SWR_DECIKEY
+*"     VALUE(DO_COMMIT) TYPE  XFELD DEFAULT 'X'
+*"     VALUE(SEC_CODE) TYPE  ZSEC_CODE
+*"     VALUE(REJ_REASON) TYPE  STRING OPTIONAL
+*"  EXPORTING
+*"     VALUE(RETURN_CODE) TYPE  SY-SUBRC
+*"     VALUE(NEW_STATUS) TYPE  SWW_WISTAT
+*"  TABLES
+*"      MESSAGE_LINES STRUCTURE  SWR_MESSAG
+*"      MESSAGE_STRUCT STRUCTURE  SWR_MSTRUC
+*"----------------------------------------------------------------------
+  DATA : lv_wirhtask  TYPE swwwihead-wi_rh_task.
+
+
+* Clear work areas and variables
+  REFRESH: it_swwuserwi, it_swwuserwi, it_agents, message_lines, it_capprover.
+  CLEAR: wa_swwuserwi, wa_swwuserwi, gv_wiid, gv_approver, gv_seccode,
+         wa_agents, gv_rejreason, gv_status.
+* Check the random number to verify whether this is actually executed
+* by authorised person only
+  gv_wiid     = workitem_id.
+*<<< Modification related to CRQ16089
+*  As per above change,Link will not contain Workitem id
+*  it would have only sec code only
+  IF gv_wiid IS INITIAL.
+    SELECT SINGLE wi_id
+      INTO gv_wiid
+      FROM zswwwiauth
+     WHERE sec_code EQ sec_code.
+  ENDIF.
+*>>> Modification end CRQ16089
+  IF user+0(2) EQ 'US'.
+    gv_approver = user+2.
+  ELSE.
+    gv_approver = user.
+  ENDIF.
+  gv_seccode  = sec_code.
+  gv_rejreason = rej_reason.
+  PERFORM authorize_with_seccode USING gv_status.
+  IF gv_retcode IS INITIAL.
+*   Check the whether the work item belongs to this approver or not
+*   While doing the checking check also for Substitutes
+    PERFORM validate_approver_wiid USING gv_status.
+    IF gv_retcode IS INITIAL.
+*     >> Begin of modification by C90000248 CRQ23301  Transport# DSDK941345
+*     Check whether this work item related to LEAVE REQUEST APPROVAL
+      IF gv_wirhtask EQ 'TS00408018' OR gv_wirhtask EQ 'TS90000443'.  " DSDK948606
+*       New provision to check for LOCK on PAYROLL AREA for Leave Req
+*       Approvals and show relavent message withuot executing the item
+        PERFORM check_payroll_area_lock.
+      ENDIF.
+*     << End of modification by C90000248 CRQ23301 Transport# DSDK941345
+
+*     Begin of Add DSDK967318 CRQ121365
+*     Non Stock PR Approval from Email
+*     Call the release FM if accept button is clicked
+      IF gv_wirhtask EQ 'TS90000945' AND DECISION_KEY eq '0001'.
+        PERFORM release_pr.
+      ENDIF.
+*     End of Add DSDK967318 CRQ121365
+
+      IF gv_retcode IS INITIAL.
+*       Fill the RFC CALL Container with values
+        PERFORM write_to_container.
+*       Execute the Work Item
+        CALL FUNCTION 'SAP_WAPI_DECISION_COMPLETE'
+          EXPORTING
+            workitem_id    = wa_swwwihead-wi_id
+            language       = language
+            user           = gv_approver
+            decision_key   = decision_key
+            do_commit      = do_commit
+          IMPORTING
+            return_code    = return_code
+            new_status     = new_status
+          TABLES
+            message_lines  = message_lines
+            message_struct = message_struct.
+        IF return_code IS INITIAL.
+          return_code = gv_retcode.
+          wa_message_lines-msg_type = 'S'.
+
+*         Begin of Add DSDK947083 CRQ101037
+*         Custom messaged for Recruitment
+          SELECT SINGLE wi_rh_task
+            INTO lv_wirhtask
+            FROM swwwihead
+           WHERE wi_id EQ gv_wiid.
+          IF lv_wirhtask EQ 'TS90000525' AND decision_key EQ '0001'.
+            wa_message_lines-line = 'Applicant Successfully Approved'(041).
+          ELSEIF lv_wirhtask EQ 'TS90000525' AND decision_key EQ '0002'.
+            wa_message_lines-line = 'Applicant Rejected'(042).
+          ELSEIF lv_wirhtask EQ 'TS90000633' AND decision_key EQ '0001'.
+            wa_message_lines-line = 'Applicant Successfully Sent to CID Verification'(043).
+          ELSEIF lv_wirhtask EQ 'TS90000633' AND decision_key EQ '0002'.
+            wa_message_lines-line = 'Applicant Rejected'(042).
+
+          ELSE.
+*         End of Add DSDK947083 CRQ101037
+            wa_message_lines-line = 'Work Item Successfully Executed'(008).
+          ENDIF.
+*       Update the status of work item after execution
+          UPDATE zswwwiauth
+             SET aedat    = sy-datum
+                 aeuzeit  = sy-uzeit
+                 actedby  = gv_approver
+           WHERE wi_id    = gv_wiid.
+          IF sy-subrc NE 0.
+            return_code = '92'.
+            wa_message_lines-msg_type = 'E'.
+            CONCATENATE 'Work Item Successfully Executed but Log'(011)
+                        'table updation failed'(012)
+                   INTO wa_message_lines-line
+              SEPARATED BY ''.
+          ENDIF.
+        ENDIF.
+      ELSE.
+*       "CRQ129173
+*       "For PR display acutal message coming while approving PR
+        IF gv_wirhtask EQ 'TS90000945'.
+         return_code = '96'.
+         wa_message_lines-msg_type = 'E'.
+*       "Modification end CRQ129173
+        ELSE.
+        return_code = '96'.
+        wa_message_lines-msg_type = 'E'.
+        CONCATENATE 'System is blocked for Payroll execution.'(013)
+                    'Please approve after 26th'(014)
+               INTO wa_message_lines-line
+          SEPARATED BY ''.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ELSE.
+*   Message already filled in Subroutine
+  ENDIF.
+  IF wa_message_lines IS NOT INITIAL.
+    return_code = gv_retcode.
+    APPEND wa_message_lines TO message_lines.
+  ENDIF.
+
+ENDFUNCTION.
