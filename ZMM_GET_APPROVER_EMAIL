@@ -1,0 +1,52 @@
+*----------------------------------------------------------------------*
+* Author:                 Lakshmi Narayana.S (C90000248)               *
+* Date:                   21.02.2011                                   *
+* Change request number:  New Development                              *
+* Trouble ticket number:                                               *
+* Description:            For the given User ID's of approvers get the *
+*                         email ID's by reading the SU01 information.  *
+* Version:                1.0                                          *
+* Technical Design Specification(s): SAP-TDS-MM-D-                     *
+*----------------------------------------------------------------------*
+* Change History:                                                      *
+* ---------------                                                      *
+* Ver    Date      UserID     TransportNo         Description          *
+* 1.0  21.02.2011 C90000248   DSDK932685     Initial Development       *
+*----------------------------------------------------------------------*
+FUNCTION zmm_get_approver_email.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  TABLES
+*"      APPROVERS STRUCTURE  ZMM_PO_AGENT
+*"----------------------------------------------------------------------
+
+  DATA: lv_userid TYPE xubname.
+
+  LOOP AT approvers ASSIGNING  <fs_poagents>.
+*   Get email id for the approver user id
+    IF <fs_poagents> IS ASSIGNED.
+      IF <fs_poagents>-userid+0(2) EQ 'US'.
+        lv_userid = <fs_poagents>-userid+2.
+      ELSE.
+        lv_userid = <fs_poagents>-userid.
+      ENDIF.
+      CALL FUNCTION 'FTR_CORR_CHECK_EMAIL_SAP_USER'
+        EXPORTING
+          i_user              = lv_userid
+        IMPORTING
+          e_email_address     = <fs_poagents>-emailid
+        EXCEPTIONS
+          mail_address        = 1
+          determination_error = 2
+          OTHERS              = 3.
+      IF sy-subrc <> 0.
+*       MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+      ELSE.
+*       No Email ID Found
+      ENDIF.
+    ENDIF.
+    CLEAR: lv_userid.
+  ENDLOOP.
+
+ENDFUNCTION.
