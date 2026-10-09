@@ -7,8 +7,22 @@ FUNCTION ZWF_APP_STA_HTML.
 *"----------------------------------------------------------------------
 
 "Function Group - ZWF_MOBILE
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*09.10.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+*                                         add time to display under approve on
+*
+*
+*
+*---------------------------------------------------------------------
 
   DATA lv_date(10) TYPE c.
+  DATA lv_datetime(25) TYPE c.
+  DATA lv_time(10) TYPE c.
   DATA: lv_text1   TYPE char255,
     lv_discurr TYPE text20.
 
@@ -105,12 +119,27 @@ FUNCTION ZWF_APP_STA_HTML.
     PERFORM fill_lines6 USING lv_text1.
     CLEAR: lv_text1.
 
-    WRITE ls_ppm-ap_datetim TO lv_date  DD/MM/YYYY .
+********begin of DSDK9A0FBW ***************************************************
+     IF ls_ppm-ap_datetim  IS NOT INITIAL.
+        WRITE ls_ppm-ap_datetim TO lv_date  DD/MM/YYYY .
+     ELSE.
+        CLEAR lv_date .
+     ENDIF.
+
+    " 2. Format Time to HH:MM:SS (e.g., 09:00:10)
+    IF ls_ppm-ap_time IS NOT INITIAL.
+      WRITE ls_ppm-ap_time TO lv_time USING EDIT MASK '__:__:__'.
+    ELSE.
+      CLEAR : lv_time .
+    ENDIF.
+
+    " 3. Combine Date and Time with space separator (e.g., "09/10/2026 09:00:19")
+    CONCATENATE lv_date lv_time INTO lv_datetime SEPARATED BY space.
 
     CONCATENATE '<td>' '<p><code><B>'
-        lv_date '</B></p></code>' '</td>'
+        lv_datetime  '</B></p></code>' '</td>'
                  INTO  lv_text1.
-
+********End of DSDK9A0FBW ***************************************************
     PERFORM fill_lines6 USING lv_text1.
     CLEAR: lv_text1.
 
