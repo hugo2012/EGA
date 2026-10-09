@@ -394,6 +394,19 @@ public section.
       !IV_ZCATEGORY type ZDE_CATEGORY optional
     exporting
       !ET_WF_RULE type ZPPM025_TT .
+  class-methods REVALUATE_AGENTS_PARA
+    importing
+      !IS_ITEM_DETAILS_D type ZPPM_WF_APP_S
+      !IV_LEVEL type INT4
+      !IV_GUID type RPM_TV_GUID
+      !IV_USER type UNAME
+      !IV_STATUS type /RPM/TV_STATUS_COMMON
+      !IV_BUCKET_ID type /RPM/TV_EXTID optional
+    exporting
+      !E_APPROVALWITH type ACTORID
+    changing
+      !CH_ACTORS type TSWHACTOR
+      !CH_APPSTATUS type ZPPM_WF_APP_STAT_TT optional .
 protected section.
 private section.
 
@@ -6005,6 +6018,461 @@ CLASS ZCL_PPM_COMMON IMPLEMENTATION.
 
 
 * <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Static Public Method ZCL_PPM_COMMON=>REVALUATE_AGENTS_PARA
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IS_ITEM_DETAILS_D              TYPE        ZPPM_WF_APP_S
+* | [--->] IV_LEVEL                       TYPE        INT4
+* | [--->] IV_GUID                        TYPE        RPM_TV_GUID
+* | [--->] IV_USER                        TYPE        UNAME
+* | [--->] IV_STATUS                      TYPE        /RPM/TV_STATUS_COMMON
+* | [--->] IV_BUCKET_ID                   TYPE        /RPM/TV_EXTID(optional)
+* | [<---] E_APPROVALWITH                 TYPE        ACTORID
+* | [<-->] CH_ACTORS                      TYPE        TSWHACTOR
+* | [<-->] CH_APPSTATUS                   TYPE        ZPPM_WF_APP_STAT_TT(optional)
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD REVALUATE_AGENTS_PARA.
+* Method is used fetch ITEM DATA based on decision id
+* and evaluate WF rule and determine agents after a deadline has been reached
+*
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*02.10.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+*                                          The logic is used for
+*                                         evaluate WF rule and determine agents after a deadline has been reached
+*
+*
+*---------------------------------------------------------------------
+
+* set local variables
+    TYPES:BEGIN OF lty_appr,
+            seqno TYPE zzde_seqno,
+            user  TYPE actorid,
+          END OF lty_appr.
+
+    DATA lt_appr TYPE TABLE OF lty_appr.
+    DATA ls_appr TYPE lty_appr.
+
+    DATA selection_tab TYPE TABLE OF text60.
+    DATA ls_selection_tab LIKE LINE OF selection_tab.
+
+    DATA:
+      lt_actor_container TYPE STANDARD TABLE OF swcont,
+      lt_actor_tab       TYPE STANDARD TABLE OF swhactor,
+      lt_messages        TYPE bapirettab,
+      ls_message         TYPE bapiret2.
+
+    DATA:
+     lr_dependency_api TYPE REF TO /rpm/cl_dependency_api,
+      lr_error          TYPE REF TO cx_root,
+      lr_msg_handler    TYPE REF TO /rpm/cl_message_handle,
+      lr_obj_manager    TYPE REF TO cl_rpm_obj_manager.
+
+    DATA ls_context TYPE /rpm/ts_object_hier.
+
+    DATA l_zzbunit(60) TYPE c.
+    DATA lv_plvar TYPE plvar.
+    DATA lv_rule TYPE objid.
+    DATA lt_agents TYPE tswhactor.
+    DATA lv_rc TYPE sysubrc.
+    DATA lv_amt   TYPE /rpm/v_fin_plan-amount.
+    DATA lv_ramt(15) TYPE c.
+    DATA: lt_actor  TYPE TABLE OF swhactor,
+          ls_agents TYPE zppm_wf_app_s,
+          ls_act    TYPE swhactor.
+    DATA lt_orgdata TYPE TABLE OF bapip0001b.
+    DATA lt_comm TYPE TABLE OF bapip0105b.
+    DATA lv_pernr TYPE bapiemplb-perno.
+    DATA:
+      lt_msg   TYPE /rpm/tt_messages,
+      lv_langu TYPE sy-langu,
+      lv_laiso TYPE laiso.
+    DATA ls_attributes TYPE /rpm/ts_item_d_api.
+    DATA lv_objid TYPE objec-realo.
+
+    DATA l_dec_id(30) TYPE c.
+    DATA l_item_type(30) TYPE c.
+    DATA lv_role TYPE bezei50.
+
+    DATA lv_user_info TYPE rpm_centralperson_ids.
+    DATA lv_user TYPE xubname.
+    DATA lv_lines TYPE i.
+    DATA ls_app_stat TYPE zppm_wf_app_stat_s.
+    DATA ls_ppm030 TYPE zppm_decision_app_s.
+    DATA lt_applist TYPE TABLE OF zppm_decision_app_s.
+    DATA l_tablename TYPE tabname.
+    DATA lo_table_ref TYPE REF TO data.
+    DATA l_sel_val(50) TYPE c.
+    DATA lv_seqno TYPE zzde_seqno.
+
+    FIELD-SYMBOLS:<dynamic_table> TYPE table.
+
+*   DSDK9A07KC - Log issue 457-
+    DATA: lv_wftype TYPE zzde_wftype.
+
+* get decision id data
+    SELECT SINGLE * FROM /rpm/decision INTO @DATA(ls_decs)
+                        WHERE guid = @iv_guid.
+
+    CHECK sy-subrc IS INITIAL.
+
+    TRY.
+*/Set language
+        lv_langu = sy-langu.
+
+        lv_laiso = cl_rpm_language_buffer=>convert_langu_to_laiso( lv_langu ).
+
+        IF lv_laiso IS INITIAL .
+          lv_laiso = 'EN' .
+        ENDIF .
+
+        CREATE OBJECT lr_msg_handler.
+        lr_dependency_api ?= /rpm/cl_dependency_api=>get_instance( lv_langu ).
+
+*--Instantiate the object manager
+        lr_obj_manager = cl_rpm_obj_manager=>get_instance( ).
+        ls_context-object_guid = ls_decs-item_guid.
+        CALL METHOD cl_rpm_obj_manager=>read_item_detail
+          EXPORTING
+            iv_header_guid = ls_context-object_guid
+            iv_language    = lv_laiso
+          IMPORTING
+            es_attributes  = ls_attributes.
+      CATCH cx_root INTO lr_error.
+        lv_rc = 4.
+        CALL METHOD cl_rpm_message_services=>log_message_text
+          EXPORTING
+            iv_msgty     = cl_rpm_co=>sc_error
+            ir_exception = lr_error.
+    ENDTRY.
+* retrieve workflow rules data on item type, decision id, status, profile and plan status
+
+    CHECK lv_rc IS INITIAL.
+
+*<<<< Start of the change by C90005555 #DSDK9A07KC  #CHG0029188 - Log Issue 457------------------------------------------
+**Purpose :---------------------------------------------------------------------------
+* Call method ZCL_PPM_WORKFLOW=>GET_CATEGORY_WFTYPE  to get Category,
+* to get DoA list
+**------------------------------------------------------------------------------------
+
+   CALL METHOD zcl_ppm_workflow=>get_category_wftype
+     EXPORTING
+       iv_bucket_id_child =  iv_bucket_id   " Bucket CHILD ID
+       iv_decision_guid   =  iv_guid   " Decision GUID
+     IMPORTING
+       ev_zcategory       =   DATA(lv_zcategory)  " Category
+       et_msg             =   DATA(lt_wftype_msg)  " Error Messages
+     .
+
+     CALL FUNCTION 'ZPPM_FM_GET_WFTYPE_CATGORY'
+        EXPORTING
+          iv_zcategory        = lv_zcategory
+          is_attributes       = ls_attributes
+       IMPORTING
+         ev_zzwftype          = lv_wftype
+       TABLES
+         et_msg               = lt_wftype_msg
+                .
+
+*Commented - log issue 457
+*    SELECT SINGLE * FROM zppm035 INTO @DATA(ls_035)
+*                         WHERE zzmteam = @ls_attributes-zzmteam
+*                          AND  area = @ls_attributes-geography
+*                          AND  zzplanst  = @ls_attributes-zzplanst.
+
+*>>>> End of change by C90005555 #DSDK9A07KC  #CHG0029188- Log Issue 457----------------------------------------
+
+    SELECT * FROM zppm025 INTO TABLE @DATA(lt_wf_rule)
+                         WHERE zzitmty = @ls_attributes-item_type
+                           AND zzphase = @ls_decs-decision_id
+                           AND zzdecid = @iv_status
+                          " AND zzwftype = @ls_035-zzwftype "removed by C90005555 - DSDK9A07KC #CHG0029188
+                           AND zzwftype = @lv_wftype "Added by C90005555 - DSDK9A07KC #CHG0029188
+                           AND zzbukr   = @ls_attributes-zzvbukr.
+
+* get financial view master data used to derive TEC and phase amount
+
+    SELECT SINGLE * FROM zppm023 INTO @DATA(ls_view)
+            WHERE zzitmty = @ls_attributes-item_type
+              AND zzdecpt = @ls_decs-decision_id.
+* fetch financial plan data
+
+    SELECT period, amount, currency FROM /rpm/v_fin_plan INTO TABLE @DATA(lt_fin_plan)
+                       WHERE item_d_guid = @ls_decs-item_guid
+                         AND plan_type   = @ls_view-zzview.
+
+* fetch description
+
+    SELECT SINGLE description FROM /rpm/fin_view_t INTO @DATA(lv_viewtext)
+                           WHERE langu = @sy-langu
+                             AND fin_view = @ls_view-zzview.
+* calculate amount based on rate
+    LOOP AT lt_fin_plan INTO DATA(ls_fin_plan).
+      lv_amt = ls_fin_plan-amount + lv_amt. " Total Amount
+    ENDLOOP.
+* fetch USD rate
+
+    DATA(lv_rate) = get_currency_rate( iv_from_currency = ls_fin_plan-currency  iv_to_currency = 'USD' ).
+
+    IF lv_amt IS NOT INITIAL AND lv_rate IS NOT INITIAL.
+      lv_amt = lv_amt * lv_rate.
+    ENDIF.
+
+    "lv_seqno = iv_level. "old-sequential
+    lv_seqno = is_item_details_d-seqno.
+
+    READ TABLE lt_wf_rule INTO DATA(ls_wf_rule)
+                  WITH KEY seqno = lv_seqno.
+
+    IF sy-subrc IS INITIAL.
+
+      CLEAR: lv_rc,lt_agents[],lt_actor_container[],ls_act,lv_user_info.
+
+      CASE ls_wf_rule-ruletyp.
+
+        WHEN 'L'." line manager
+
+          TRY.
+              ASSIGN COMPONENT 'ZZREQUESTOR' OF STRUCTURE ls_attributes TO FIELD-SYMBOL(<fs1>). "get requestor value
+              IF <fs1> IS ASSIGNED.
+                lv_objid = <fs1>.
+                SELECT SINGLE usrid FROM pa0105 INTO lv_objid " get user id from comm tab
+                                             WHERE pernr = <fs1>
+                                             AND   subty = '0001'
+                                             AND   endda GE sy-datum.
+                " set container values
+                swc_clear_container lt_actor_container.
+
+                swc_set_element lt_actor_container 'OTYPE' 'US'.
+                swc_set_element lt_actor_container 'OBJID' lv_objid.
+
+                lv_rule = ls_wf_rule-ruleno.
+
+                CALL METHOD zcl_ppm_common=>get_resp_rule_app1 " fetch agents rule no
+                  EXPORTING
+                    iv_rule            = lv_rule
+                    it_actor_container = lt_actor_container
+                  IMPORTING
+                    et_agents          = lt_agents
+                    ev_rc              = lv_rc.
+                IF lv_rc IS INITIAL.
+                  DELETE lt_agents WHERE otype <> 'US'.
+                  IF lt_agents IS NOT INITIAL.
+                    APPEND LINES OF lt_agents TO ch_actors. " set actors
+                  ENDIF.
+                ELSE.
+
+                ENDIF.
+
+              ENDIF.
+            CATCH zcx_swf_no_agent_found.
+            CATCH cx_hrpad_erd_no_active_plvar.
+
+          ENDTRY.
+        WHEN 'R'." Responsibility rule
+
+          lv_rule = ls_wf_rule-ruleno.
+          l_zzbunit = ls_attributes-zzbunit.
+          l_dec_id = ls_decs-decision_id.
+          l_item_type = ls_attributes-item_type.
+
+          TRY.
+              CALL METHOD zcl_ppm_common=>get_resp_rule_app2 " fetch agents rule no
+                EXPORTING
+                  iv_rule     = lv_rule
+                  iv_phase    = l_dec_id
+                  iv_itm_type = l_item_type
+                  iv_bunit    = l_zzbunit
+                  iv_amount   = lv_amt
+                IMPORTING
+                  et_agents   = lt_agents
+                  ev_rc       = lv_rc.
+              IF lv_rc IS INITIAL.
+                DELETE lt_agents WHERE otype <> 'US'.
+                IF lt_agents IS NOT INITIAL.
+                  APPEND LINES OF lt_agents TO ch_actors. " set actors
+                ENDIF.
+              ENDIF.
+
+
+            CATCH zcx_swf_no_agent_found.
+            CATCH cx_hrpad_erd_no_active_plvar.
+          ENDTRY.
+        WHEN 'P'." fetch data based on employee no
+* check the field assigned
+
+          ASSIGN COMPONENT ls_wf_rule-ruleno OF STRUCTURE ls_attributes TO FIELD-SYMBOL(<fs>).
+          IF <fs> IS ASSIGNED.
+            lv_pernr = <fs>.
+            CALL FUNCTION 'BAPI_EMPLOYEE_GETDATA'
+              EXPORTING
+                employee_id     = lv_pernr
+                authority_check = ''
+              TABLES
+                org_assignment  = lt_orgdata
+                communication   = lt_comm.
+* check if COMM data exist
+            READ TABLE lt_comm INTO DATA(ls_comm)
+                               WITH KEY subtype = '0001'.
+            IF sy-subrc IS INITIAL.
+              ls_act-objid = ls_comm-userid.
+              ls_act-otype = 'US'.
+              APPEND ls_act TO ch_actors.
+              CLEAR ls_act.
+            ENDIF.
+          ENDIF.
+
+        WHEN 'C'." Custom table logic can be extended here!
+* rule used to get partner function..if more tables are going to be involved
+* just extend the logic
+
+          CLEAR selection_tab[].
+          l_tablename = ls_wf_rule-ruleno.
+          CHECK ls_wf_rule-parvw IS NOT INITIAL.
+*          ASSIGN COMPONENT 'ZZPARVW' OF STRUCTURE ls_attributes TO FIELD-SYMBOL(<fs2>).
+*          CHECK <fs2> IS ASSIGNED.
+
+          CREATE DATA lo_table_ref TYPE STANDARD TABLE OF (l_tablename).
+
+          CHECK lo_table_ref IS NOT INITIAL.
+
+          ASSIGN lo_table_ref->* TO <dynamic_table>.
+          CHECK <dynamic_table> IS ASSIGNED.
+          CLEAR l_sel_val.
+          l_sel_val = ls_wf_rule-parvw.
+          CONCATENATE '''' l_sel_val '''' INTO l_sel_val.
+          CONCATENATE 'PARVW' '=' l_sel_val INTO ls_selection_tab SEPARATED BY space.
+
+          APPEND ls_selection_tab TO selection_tab.
+          CLEAR ls_selection_tab.
+
+          CONCATENATE 'AND' 'INACT' '=' 'SPACE' INTO ls_selection_tab SEPARATED BY space.
+
+          APPEND ls_selection_tab TO selection_tab.
+
+          SELECT * FROM (l_tablename) INTO TABLE <dynamic_table>
+                                 WHERE (selection_tab).
+
+          LOOP AT <dynamic_table> ASSIGNING FIELD-SYMBOL(<fs_dynamic_data>).
+            ASSIGN COMPONENT 'PARNR' OF STRUCTURE <fs_dynamic_data> TO FIELD-SYMBOL(<fs3>).
+            CHECK <fs3> IS ASSIGNED.
+            ls_act-objid = <fs3>.
+            ls_act-otype = 'US'.
+            APPEND ls_act TO ch_actors.
+            CLEAR ls_act.
+          ENDLOOP.
+
+        WHEN 'K'."cost center manager rule
+
+          ASSIGN COMPONENT 'ZZAKSTL' OF STRUCTURE ls_attributes TO <fs1>.
+          IF <fs1> IS ASSIGNED.
+
+            SELECT SINGLE verak_user FROM csks          "#EC CI_GENBUFF
+                                       INTO lv_user
+                               WHERE kostl = <fs1>
+                                AND  datbi GE sy-datum.
+
+            IF lv_user IS NOT INITIAL.
+              ls_act-objid = lv_user.
+              ls_act-otype = 'US'.
+              APPEND ls_act TO ch_actors.
+              CLEAR ls_act.
+            ENDIF.
+          ENDIF.
+        WHEN 'A'. " adhoc just append the data
+
+
+
+      ENDCASE.
+
+    ELSE.
+      " contd
+    ENDIF.
+
+
+
+    READ TABLE ch_appstatus INTO ls_app_stat
+                               WITH KEY seqno = lv_seqno.
+    IF sy-subrc IS INITIAL.
+      lv_role = ls_app_stat-role.
+      DELETE ch_appstatus WHERE seqno = lv_seqno.
+    ENDIF.
+
+    DELETE ADJACENT DUPLICATES FROM ch_actors COMPARING objid.
+    LOOP AT ch_actors INTO DATA(ls_actors).
+
+      ls_appr-user =  e_approvalwith = lv_user = ls_actors-objid.
+      lv_user_info =   get_user_info( ov_user = lv_user ).
+      ls_app_stat-app_name = lv_user_info-name.
+      ls_app_stat-status = gc_pending.
+      ls_appr-seqno =  ls_app_stat-seqno = lv_seqno.
+      ls_app_stat-role = lv_role.
+      APPEND ls_app_stat TO ch_appstatus.
+
+      APPEND ls_appr TO lt_appr.
+      CLEAR ls_appr.
+
+    ENDLOOP.
+* fetch existing actors
+    SELECT * FROM zppm030 INTO TABLE @DATA(lt_ppm030)
+                          WHERE guid = @iv_guid.
+
+    SORT ch_appstatus BY seqno.
+    DELETE lt_ppm030 WHERE seqno = lv_seqno.
+
+    LOOP AT lt_ppm030 INTO DATA(ls_030).
+
+      ls_ppm030-seqno = ls_030-seqno.
+      ls_ppm030-bname = ls_030-appr.
+      ls_ppm030-apprname = ls_030-apprname.
+      ls_ppm030-amt  = lv_amt.
+      IF ls_030-status EQ 'P'.
+        ls_ppm030-appstatus = gc_pending.
+        ls_ppm030-status  = 'P'.
+      ELSE.
+        ls_ppm030-status = 'A'.
+        ls_ppm030-appstatus = gc_approved.
+      ENDIF.
+      ls_ppm030-optional = ls_030-optional.
+      ls_ppm030-optemail_user = ls_030-optemail_user.
+      ls_ppm030-role = ls_030-approle.
+      APPEND ls_ppm030 TO lt_applist.
+      CLEAR ls_ppm030.
+
+
+    ENDLOOP.
+* set the values
+    LOOP AT lt_appr INTO ls_appr.
+      ls_ppm030-seqno = ls_appr-seqno.
+      lv_user = ls_ppm030-bname = ls_appr-user.
+
+      lv_user_info = get_user_info( ov_user = lv_user ).
+      ls_ppm030-apprname =  lv_user_info-name.
+      ls_ppm030-amt  = lv_amt.
+      ls_ppm030-appstatus = gc_pending.
+      ls_ppm030-status  = 'P'.
+      ls_ppm030-role  = lv_role.
+      APPEND ls_ppm030 TO lt_applist.
+      CLEAR ls_ppm030.
+    ENDLOOP.
+* update the data back toe ZPPM030
+    SORT lt_applist BY seqno.
+    CALL FUNCTION 'ZPPM_FM_WF_APP_LIST_UPDATE'
+      EXPORTING
+        iv_guid    = iv_guid
+        iv_mode    = 'U'
+      TABLES
+        t_app_list = lt_applist.
+
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
 * | Static Public Method ZCL_PPM_COMMON=>SEND_EMAIL_DEFAULT
 * +-------------------------------------------------------------------------------------------------+
 * | [--->] IV_GUID                        TYPE        RPM_TV_GUID
@@ -6451,6 +6919,18 @@ CLASS ZCL_PPM_COMMON IMPLEMENTATION.
 * | [<-->] ET_APP_STAT_HTML               TYPE        ZTT_SOLISTI1
 * +--------------------------------------------------------------------------------------</SIGNATURE>
   METHOD set_app_rej_status.
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*02.10.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+*                                         Add approved time
+*
+*
+*
+*---------------------------------------------------------------------
 * based on user decision workflow internal values are updated
 * to approved or rejected
     DATA lv_seqno TYPE seqno.
@@ -6470,6 +6950,7 @@ CLASS ZCL_PPM_COMMON IMPLEMENTATION.
         DATA(lv_user_info) =   get_user_info( ov_user = lv_user ).
         <ls_app>-app_by = lv_user_info-name.
         <ls_app>-ap_datetim = sy-datum.
+        <ls_app>-ap_time    = sy-uzeit. "DSDK9A0FBW
       ENDIF.
 
       IF iv_decision EQ gc_r.
@@ -6933,6 +7414,20 @@ CLASS ZCL_PPM_COMMON IMPLEMENTATION.
 * | [!CX!] ZCX_WF_ERROR
 * +--------------------------------------------------------------------------------------</SIGNATURE>
   METHOD set_status_dates.
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*07.10.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+*                                         comment the block raised error
+*                                         message, then the error message
+*                                         will response in sap workflow
+*
+*---------------------------------------------------------------------
+
     DATA: lt_messages TYPE bapirettab,
           ls_message  TYPE bapiret2.
 * update Decision point dates
@@ -6954,9 +7449,16 @@ CLASS ZCL_PPM_COMMON IMPLEMENTATION.
 * & using criteria & & &
       ls_message-message = ls_msg-msg_txt.
       APPEND ls_message TO lt_messages.
-      RAISE EXCEPTION TYPE zcx_wf_error
-        EXPORTING
-          messages = lt_messages.
+
+* Commented by Huy Tran*************************
+*07.10.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+* Purpose: To get Error message retured to sap workflow
+
+*      RAISE EXCEPTION TYPE zcx_wf_error
+*        EXPORTING
+*          messages = lt_messages.
+* Commented by Huy Tran************************* DSDK9A0FBW #
+
     ENDIF.
 
 
