@@ -1,0 +1,11 @@
+Using this function RH_GET_ACTORS
+Parameters:
+LV_PLVAR	                                   	01
+IV_PHASE	                                   	ZDP01
+IV_ITM_TYPE	                                  Z001
+IV_AMOUNT	                                   	125400000.00
+IV_BUNIT	                                   	Midstream
+LV_RULE	                                   	  AC90000050
+SY-DATUM	                                   	20261010
+
+Export: Actor table like: US C90005555
