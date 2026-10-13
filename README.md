@@ -12,3 +12,6 @@
 
 <img width="912" height="740" alt="image" src="https://github.com/user-attachments/assets/269c9975-e2b1-4bb8-9b45-67ee12285016" />
 
+Display HTML table in SAP workflow Task description to send mail. it will work in outlook and in SOST/SOSG not working in SAP business workplace inbox
+
+<img width="861" height="813" alt="image" src="https://github.com/user-attachments/assets/ccae5be1-827e-4334-bb44-86129e73d26b" />
