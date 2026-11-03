@@ -1,0 +1,35 @@
+METHOD on_alv_insert .
+
+  DATA lr_data TYPE REF TO zppm_decision_app_s.
+  DATA lo_nd_z_wf_app TYPE REF TO if_wd_context_node.
+  DATA lo_el_z_wf_app TYPE REF TO if_wd_context_element.
+  DATA ls_z_wf_app TYPE wd_this->element_z_wf_app.
+  DATA lv_seqno TYPE wd_this->element_z_wf_app-seqno.
+  DATA lt_temp TYPE  wdr_context_element_set.
+  DATA lv_user_info TYPE rpm_centralperson_ids.
+  DATA lv_apprname TYPE wd_this->element_z_wf_app-apprname.
+  DATA l_uname TYPE REF TO xubname.
+  DATA l_bname TYPE xubname.
+
+
+  lo_nd_z_wf_app = wd_context->get_child_node( name = wd_this->wdctx_z_wf_app ).
+
+
+*  lv_user_info =    zcl_ppm_common=>get_user_info( ov_user = ls_wf_app-bname ).
+
+
+  LOOP AT r_param->t_modified_cells ASSIGNING FIELD-SYMBOL(<fs1>).
+    l_uname ?= <fs1>-r_value.
+    lo_el_z_wf_app = lo_nd_z_wf_app->get_element( index = <fs1>-index ).
+    ASSIGN l_uname->* TO FIELD-SYMBOL(<fs2>).
+    l_bname = <fs2>.
+    lv_user_info =    zcl_ppm_common=>get_user_info( ov_user = l_bname ).
+    lv_apprname = lv_user_info-name.
+*    set single attribute
+    lo_el_z_wf_app->set_attribute(
+      name =  `APPRNAME`
+      value = lv_apprname ).
+
+  ENDLOOP.
+
+ENDMETHOD.
