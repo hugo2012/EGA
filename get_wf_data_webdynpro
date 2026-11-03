@@ -1,0 +1,67 @@
+METHOD get_wf_data .
+
+***********************************************************************
+*  M O D I F I C A T I O N    L O G                                   *
+***********************************************************************
+*    Date   | TR Number  | Developement/  |       Description         *
+*           |            | Modification   |                           *
+***********************************************************************
+*03.11.2026  DSDK9A0FBW  CRQ#CHG0029188   Log Issue E454
+*                                         Addd three fields to Tracking
+*                                         Approved Status, Approved date,
+*                                         Approved time.
+*
+*---------------------------------------------------------------------
+
+  DATA : lt_columns TYPE salv_wd_t_column_ref,
+         ls_columns TYPE salv_wd_s_column_ref.
+  DATA : lr_input_field TYPE REF TO cl_salv_wd_uie_input_field.
+  DATA lr_column TYPE REF TO cl_salv_wd_column.
+  DATA: lr_table_settings TYPE REF TO if_salv_wd_table_settings.
+
+  DATA lt_wf_app TYPE wd_this->elements_z_wf_app.
+  DATA ls_wf_app LIKE LINE OF lt_wf_app.
+  DATA lo_nd_wf_app TYPE REF TO if_wd_context_node.
+
+  lo_nd_wf_app = wd_context->get_child_node( name = wd_this->wdctx_z_wf_app ).
+  lo_nd_wf_app->get_static_attributes_table( IMPORTING table = lt_wf_app ).
+
+  wd_this->mr_fpm = iv_fpm.
+
+  IF iv_status EQ 'ZDS03'
+  OR iv_status EQ 'ZDS07'
+  OR iv_status EQ 'ZDS04'.
+
+    SELECT * FROM zppm030 INTO TABLE @DATA(lt_ppm030)
+                              WHERE guid = @iv_guid.
+
+    LOOP AT lt_ppm030 INTO DATA(ls_ppm030).
+      ls_wf_app-seqno = ls_ppm030-seqno.
+      ls_wf_app-bname = ls_ppm030-appr.
+      ls_wf_app-apprname = ls_ppm030-apprname.
+      ls_wf_app-amt  = ls_ppm030-appamt.
+      ls_wf_app-appstatus = ls_ppm030-status.
+      ls_wf_app-role = ls_ppm030-approle.
+      ls_wf_app-status = abap_true.
+      ls_wf_app-single_multi =   ls_ppm030-single_multi.
+      ls_wf_app-parvw = ls_ppm030-parvw .
+      ls_wf_app-optional = ls_ppm030-optional.
+      ls_wf_app-optemail_user = ls_ppm030-optemail_user.
+*<<<< Start of the change by C90005555 #DSDK9A0FBW  #CHG0029188 - Log Issue 454-----------------------------------------
+      ls_wf_app-ap_status = ls_ppm030-ap_status .
+      ls_wf_app-ap_datetim = ls_ppm030-ap_datetim.
+      ls_wf_app-ap_time = ls_ppm030-ap_time.
+*<<<< End of the change by C90005555 #DSDK9A0FBW  #CHG0029188 - Log Issue 454------------------------------------------
+
+      APPEND ls_wf_app TO lt_wf_app.
+      CLEAR ls_wf_app.
+    ENDLOOP.
+
+    SORT lt_wf_app BY seqno.
+    lo_nd_wf_app->bind_table( new_items = lt_wf_app ).
+
+    set_alv( ).
+
+  ENDIF.
+
+ENDMETHOD.
