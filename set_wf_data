@@ -1,0 +1,56 @@
+METHOD set_wf_data .
+
+
+  wd_this->mr_fpm = iv_fpm.
+
+
+
+  DATA lt_wf_app TYPE wd_this->elements_z_wf_app.
+  DATA ls_wf_app LIKE LINE OF lt_wf_app.
+  DATA lo_nd_wf_app TYPE REF TO if_wd_context_node.
+
+  lo_nd_wf_app = wd_context->get_child_node( name = wd_this->wdctx_z_wf_app ).
+  lo_nd_wf_app->get_static_attributes_table( IMPORTING table = lt_wf_app ).
+
+  IF iv_status EQ 'ZDS03'.
+    CHECK lt_wf_app IS INITIAL.
+    LOOP AT zcl_ppm_common=>mt_ppm030 INTO DATA(ls_mtppm030).
+
+      LOOP AT  lt_wf_app ASSIGNING FIELD-SYMBOL(<fs>)
+                    WHERE seqno = ls_mtppm030-seqno
+                      AND bname = ls_mtppm030-appr.
+
+        <fs>-bname = ls_mtppm030-appr.
+        <fs>-apprname = ls_mtppm030-apprname.
+        <fs>-status = ls_mtppm030-status.
+
+      ENDLOOP.
+      IF sy-subrc IS NOT INITIAL.
+        ls_wf_app-bname = ls_mtppm030-appr.
+        ls_wf_app-apprname = ls_mtppm030-apprname.
+        ls_wf_app-role = ls_mtppm030-approle.
+        ls_wf_app-seqno = ls_mtppm030-seqno.
+        ls_wf_app-status = ls_mtppm030-status.
+        ls_wf_app-amt = ls_mtppm030-appamt.
+        ls_wf_app-appstatus = ls_mtppm030-appstatus.
+        ls_wf_app-single_multi = ls_mtppm030-single_multi.
+        ls_wf_app-parvw = ls_mtppm030-parvw.
+        ls_wf_app-optional = ls_mtppm030-optional.
+        APPEND ls_wf_app TO lt_wf_app.
+        CLEAR ls_wf_app.
+      ENDIF.
+    ENDLOOP.
+    SORT lt_wf_app BY seqno.
+    zcl_ppm_common=>mt_wf_app_list = lt_wf_app.
+*
+    lo_nd_wf_app->bind_table( new_items = lt_wf_app ).
+
+    set_alv( ).
+
+
+  ELSE.
+    lo_nd_wf_app->invalidate( ).
+  ENDIF.
+
+
+ENDMETHOD.
