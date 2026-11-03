@@ -15,3 +15,15 @@
 Display HTML table in SAP workflow Task description to send mail. it will work in outlook and in SOST/SOSG not working in SAP business workplace inbox
 
 <img width="861" height="813" alt="image" src="https://github.com/user-attachments/assets/ccae5be1-827e-4334-bb44-86129e73d26b" />
+
+
+<img width="1325" height="819" alt="image" src="https://github.com/user-attachments/assets/7171fc6f-4391-4879-9ff4-bcc7695ee487" />
+
+<img width="1862" height="874" alt="image" src="https://github.com/user-attachments/assets/0fe9944c-3b59-443b-a84c-bc8fd041d5ac" />
+
+<img width="1842" height="863" alt="image" src="https://github.com/user-attachments/assets/a9fd9e0a-5460-420a-96b1-70d33c6054bb" />
+
+<img width="1832" height="689" alt="image" src="https://github.com/user-attachments/assets/a7c40808-6659-4d0f-ac39-d72824093ee9" />
+
+
+
