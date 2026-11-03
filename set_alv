@@ -1,0 +1,140 @@
+METHOD set_alv .
+
+  DATA : lt_columns TYPE salv_wd_t_column_ref,
+         ls_columns TYPE salv_wd_s_column_ref.
+  DATA : lr_input_field TYPE REF TO cl_salv_wd_uie_input_field.
+  DATA lr_column TYPE REF TO cl_salv_wd_column.
+  DATA: lr_table_settings TYPE REF TO if_salv_wd_table_settings.
+  DATA lo_header TYPE REF TO cl_salv_wd_column_header.
+  DATA(go_alv_intf) =   wd_this->wd_cpifc_app_alv( ).
+  DATA(lv_value) = go_alv_intf->get_model( ).
+
+  CALL METHOD lv_value->if_salv_wd_column_settings~get_column
+    EXPORTING
+      id    = 'BNAME'
+    RECEIVING
+      value = lr_column.
+
+  lo_header = lr_column->get_header( ).
+  lo_header->set_text( EXPORTING value = 'Approver' ).
+  lo_header->set_prop_ddic_binding_field(
+      property =  if_salv_wd_c_ddic_binding=>bind_prop_text
+      value = if_salv_wd_c_ddic_binding=>ddic_bind_none ).
+
+  CREATE OBJECT lr_input_field
+    EXPORTING
+      value_fieldname = 'BNAME'.
+
+  CALL METHOD lr_column->set_cell_editor
+    EXPORTING
+      value = lr_input_field.
+  lr_input_field->set_read_only_fieldname( value = 'STATUS' ).
+* change column text
+  CALL METHOD lv_value->if_salv_wd_column_settings~get_column
+    EXPORTING
+      id    = 'APPRNAME'
+    RECEIVING
+      value = lr_column.
+
+  lo_header = lr_column->get_header( ).
+  lo_header->set_text( EXPORTING value = 'Approver Name' ).
+  lo_header->set_prop_ddic_binding_field(
+      property =  if_salv_wd_c_ddic_binding=>bind_prop_text
+      value = if_salv_wd_c_ddic_binding=>ddic_bind_none ).
+
+  CALL METHOD lv_value->if_salv_wd_column_settings~get_column
+    EXPORTING
+      id    = 'ROLE'
+    RECEIVING
+      value = lr_column.
+
+  lo_header = lr_column->get_header( ).
+  lo_header->set_text( EXPORTING value = 'Role' ).
+  lo_header->set_prop_ddic_binding_field(
+      property =  if_salv_wd_c_ddic_binding=>bind_prop_text
+      value = if_salv_wd_c_ddic_binding=>ddic_bind_none ).
+
+
+*/// hide columns
+  CALL METHOD lv_value->if_salv_wd_column_settings~get_column
+    EXPORTING
+      id    = 'APPSTATUS'
+    RECEIVING
+      value = lr_column.
+  lr_column->set_visible( cl_wd_uielement=>e_visible-none ).
+
+  CALL METHOD lv_value->if_salv_wd_column_settings~get_column
+    EXPORTING
+      id    = 'STATUS'
+    RECEIVING
+      value = lr_column.
+  lr_column->set_visible( cl_wd_uielement=>e_visible-none ).
+
+  CALL METHOD lv_value->if_salv_wd_column_settings~get_column
+    EXPORTING
+      id    = 'AMT'
+    RECEIVING
+      value = lr_column.
+
+  lr_column->set_visible( cl_wd_uielement=>e_visible-none ).
+
+  CALL METHOD lv_value->if_salv_wd_column_settings~get_column
+    EXPORTING
+      id    = 'PARVW'
+    RECEIVING
+      value = lr_column.
+
+
+  lr_column->set_visible( cl_wd_uielement=>e_visible-none ).
+
+  CALL METHOD lv_value->if_salv_wd_column_settings~get_column
+    EXPORTING
+      id    = 'SINGLE_MULTI'
+    RECEIVING
+      value = lr_column.
+
+  lr_column->set_visible( cl_wd_uielement=>e_visible-none ).
+
+  CALL METHOD lv_value->if_salv_wd_column_settings~get_column
+    EXPORTING
+      id    = 'OPTEMAIL_USER'
+    RECEIVING
+      value = lr_column.
+
+  lr_column->set_visible( cl_wd_uielement=>e_visible-none ).
+
+  CALL METHOD lv_value->if_salv_wd_column_settings~get_column
+    EXPORTING
+      id    = 'OPTIONAL'
+    RECEIVING
+      value = lr_column.
+
+  lr_column->set_visible( cl_wd_uielement=>e_visible-none ).
+
+  DATA lo_ins_button          TYPE REF TO cl_salv_wd_fe_button.
+  DATA lo_but_func            TYPE REF TO cl_salv_wd_function.
+  DATA lo_del_button          TYPE REF TO cl_salv_wd_fe_button.
+  DATA lo_but_func1            TYPE REF TO cl_salv_wd_function.
+
+  CREATE OBJECT lo_ins_button .
+  lo_ins_button->set_text('Insert rows').
+  lo_but_func = lv_value->if_salv_wd_function_settings~create_function( id = 'ZINSERT_ROW').
+  lo_but_func->set_editor( lo_ins_button ).
+
+  CREATE OBJECT lo_del_button .
+  lo_del_button->set_text('Delete rows').
+  lo_but_func1 = lv_value->if_salv_wd_function_settings~create_function( id = 'ZDELETE_ROW').
+  lo_but_func1->set_editor( lo_del_button ).
+
+  lr_table_settings ?= lv_value.
+  lr_table_settings->set_read_only( abap_false ).
+  lr_table_settings->set_data_check( if_salv_wd_c_table_settings=>data_check_on_cell_event  ).
+  lv_value->if_salv_wd_std_functions~set_export_allowed( abap_false ).
+  lv_value->if_salv_wd_std_functions~set_edit_check_available( abap_false ).
+  lv_value->if_salv_wd_std_functions~set_edit_insert_row_allowed( abap_false ).
+  lv_value->if_salv_wd_std_functions~set_edit_append_row_allowed( abap_false ).
+  lv_value->if_salv_wd_std_functions~set_edit_delete_row_allowed( abap_false ).
+  lv_value->if_salv_wd_std_functions~set_dialog_settings_allowed( abap_false ).
+  lv_value->if_salv_wd_std_functions~set_display_settings_allowed( abap_false ).
+*  lv_value->if_salv_wd_std_functions~set_display_as_allowed( abap_false ).
+ENDMETHOD.
