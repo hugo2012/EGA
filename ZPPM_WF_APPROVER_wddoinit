@@ -1,0 +1,17 @@
+METHOD wddoinit .
+
+
+
+  DATA lo_cmp_usage_alv TYPE REF TO if_wd_component_usage.
+
+  lo_cmp_usage_alv =   wd_this->wd_cpuse_app_alv( ).
+  IF lo_cmp_usage_alv->has_active_component( ) IS INITIAL.
+    lo_cmp_usage_alv->create_component( ).
+  ENDIF.
+
+
+
+
+
+
+ENDMETHOD.
