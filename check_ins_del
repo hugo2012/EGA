@@ -1,0 +1,99 @@
+METHOD check_ins_del .
+
+  DATA lo_nd_z_wf_app TYPE REF TO if_wd_context_node.
+  DATA lo_el_z_wf_app TYPE REF TO if_wd_context_element.
+  DATA ls_z_wf_app TYPE wd_this->element_z_wf_app.
+  DATA lv_seqno TYPE wd_this->element_z_wf_app-seqno.
+  DATA lt_elem LIKE STANDARD TABLE OF lo_el_z_wf_app.
+  DATA l_index TYPE i.
+  DATA l_cnt TYPE i.
+  DATA lt_z_wf_app TYPE wd_this->elements_z_wf_app.
+  DATA lo_interfacecontroller TYPE REF TO iwci_salv_wd_table .
+
+  lo_nd_z_wf_app = wd_context->get_child_node( name = wd_this->wdctx_z_wf_app ).
+  l_index = lo_nd_z_wf_app->get_lead_selection_index( ).
+  CHECK l_index > 0.
+  lo_el_z_wf_app = lo_nd_z_wf_app->get_element( index = l_index ).
+  lo_el_z_wf_app->get_static_attributes(
+       IMPORTING
+         static_attributes = ls_z_wf_app ).
+
+
+  CASE r_param->id.
+
+    WHEN 'ZINSERT_ROW'.
+      IF ls_z_wf_app-single_multi EQ '01'
+        OR ls_z_wf_app-status EQ abap_true
+        OR ls_z_wf_app-single_multi EQ space.
+        wd_this->mr_fpm->mo_message_manager->report_message(
+                          iv_message_text  = 'Line cannot be inserted for unique approval'
+                          iv_severity      = if_fpm_message_manager=>gc_severity_error
+                          io_component     = wd_this  ).
+        EXIT.
+      ELSE.
+        IF ls_z_wf_app-single_multi EQ '02'.
+          l_index = l_index + 1.
+          lo_nd_z_wf_app->get_static_attributes_table( IMPORTING table = lt_z_wf_app ).
+          CLEAR:  ls_z_wf_app-bname,ls_z_wf_app-apprname.
+          INSERT ls_z_wf_app INTO lt_z_wf_app INDEX l_index.
+          lo_nd_z_wf_app->bind_table( new_items = lt_z_wf_app set_initial_elements = abap_true ).
+          lo_nd_z_wf_app->set_lead_selection_index( l_index ).
+
+          lo_interfacecontroller =   wd_this->wd_cpifc_app_alv( ).
+          lo_interfacecontroller->refresh(  ).
+        ENDIF.
+
+      ENDIF.
+
+    WHEN 'ZDELETE_ROW'.
+      IF ls_z_wf_app-single_multi EQ '01'
+         OR ls_z_wf_app-status EQ abap_true
+            OR ls_z_wf_app-single_multi EQ space.
+        wd_this->mr_fpm->mo_message_manager->report_message(
+                          iv_message_text  = 'Line cannot be deleted for unique approval'
+                          iv_severity      = if_fpm_message_manager=>gc_severity_error
+                          io_component     = wd_this  ).
+        EXIT.
+      ELSE.
+*
+        lo_nd_z_wf_app->get_static_attributes_table( IMPORTING table = lt_z_wf_app ).
+        CLEAR:  ls_z_wf_app-bname,ls_z_wf_app-apprname.
+        LOOP AT lt_z_wf_app INTO DATA(ls)
+                           WHERE seqno = ls_z_wf_app-seqno.
+          l_cnt = l_cnt + 1.
+        ENDLOOP.
+        IF l_cnt > 1.
+          DELETE lt_z_wf_app INDEX l_index.
+          lo_nd_z_wf_app->bind_table( new_items = lt_z_wf_app set_initial_elements = abap_true ).
+          l_index = l_index - 1.
+          IF l_index LE 0.
+          ELSE.
+            lo_nd_z_wf_app->set_lead_selection_index( l_index ).
+          ENDIF.
+          lo_interfacecontroller =   wd_this->wd_cpifc_app_alv( ).
+          lo_interfacecontroller->refresh(  ).
+        ELSE.
+          IF ls_z_wf_app-single_multi EQ '03'.
+            DELETE lt_z_wf_app INDEX l_index.
+            lo_nd_z_wf_app->bind_table( new_items = lt_z_wf_app set_initial_elements = abap_true ).
+            l_index = l_index - 1.
+            IF l_index LE 0.
+            ELSE.
+              lo_nd_z_wf_app->set_lead_selection_index( l_index ).
+            ENDIF.
+            lo_interfacecontroller =   wd_this->wd_cpifc_app_alv( ).
+            lo_interfacecontroller->refresh(  ).
+
+          ELSE.
+            wd_this->mr_fpm->mo_message_manager->report_message(
+                              iv_message_text  = 'Line cannot be deleted as only one unique entry exist'
+                              iv_severity      = if_fpm_message_manager=>gc_severity_error
+                              io_component     = wd_this  ).
+
+          ENDIF.
+        ENDIF.
+      ENDIF.
+  ENDCASE.
+
+
+ENDMETHOD.
